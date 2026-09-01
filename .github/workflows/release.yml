@@ -1,0 +1,42 @@
+name: Release
+
+# OSプレフィックス付きタグ (例: windows-v1.0.0) の push で該当OSの Release を作成する
+on:
+  push:
+    tags:
+      - "windows-v*"
+      - "macos-v*"
+      - "linux-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: タグを解析 (windows-v1.0.0 → os=windows, version=1.0.0)
+        id: tag
+        run: |
+          os="${GITHUB_REF_NAME%%-v*}"
+          version="${GITHUB_REF_NAME#*-v}"
+          echo "os=$os" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: パッケージ作成 (対象OSのディレクトリ + 共有ファイル)
+        run: |
+          os='${{ steps.tag.outputs.os }}'
+          version='${{ steps.tag.outputs.version }}'
+          test -d "$os" || { echo "::error::directory '$os' not found"; exit 1; }
+          mkdir -p dist/wincolor
+          cp -r "$os" shared README.md dist/wincolor/
+          (cd dist && zip -r "wincolor-$os-v$version.zip" wincolor)
+
+      - name: Release 作成
+        uses: softprops/action-gh-release@v2
+        with:
+          name: wincolor ${{ steps.tag.outputs.os }} v${{ steps.tag.outputs.version }}
+          files: dist/wincolor-*.zip
+          generate_release_notes: true

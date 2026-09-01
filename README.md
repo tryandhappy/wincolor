@@ -28,8 +28,19 @@ wincolor/
 | macOS | オーバーレイ枠(公開APIでは他アプリのタイトルバー色変更不可) | ウィンドウ周囲の色枠 |
 | Linux | WM 依存(X11 は装飾 or オーバーレイ枠、Wayland は制約大) | ウィンドウ周囲の色枠 |
 
+## リリース
+
+バージョンは OS ごとに独立して管理する。OS プレフィックス付きタグ
+(`windows-v1.0.0` など)を push すると、GitHub Actions が該当 OS の
+zip を添付した Release を自動作成する。
+
+```sh
+git tag windows-v1.0.0
+git push origin main --tags
+```
+
 ## ステータス
 
-- [ ] Windows 版(最初のターゲット)
+- [x] Windows 版 v1.0.0(AutoHotkey v2 / DWM + オーバーレイ枠)
 - [ ] macOS 版
 - [ ] Linux 版

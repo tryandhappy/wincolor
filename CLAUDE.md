@@ -9,6 +9,16 @@
   コミットメッセージは変更内容に合わせて Claude が適切に作成する。
 - push は指示があったときのみ。
 
+## バージョン管理とリリース
+
+- **バージョンは OS ごとに独立**して管理する。タグは OS プレフィックス付き:
+  `windows-v1.0.0` / `macos-v0.1.0` / `linux-v0.1.0`
+- タグを push すると GitHub Actions (.github/workflows/release.yml) が
+  該当OSの zip を添付した Release を自動作成する
+- リリース手順(例: Windows 版):
+  1. `windows/wincolor.ahk` の `WINCOLOR_VERSION` を更新してコミット
+  2. `git tag windows-vX.Y.Z && git push origin main --tags`(push は指示があったときのみ)
+
 ## 構成
 
 - `windows/` — AutoHotkey v2 実装(現在の主開発対象)

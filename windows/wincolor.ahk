@@ -12,6 +12,8 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
+WINCOLOR_VERSION := "1.0.0"
+
 DWMWA_BORDER_COLOR  := 34
 DWMWA_CAPTION_COLOR := 35
 DWMWA_TEXT_COLOR    := 36
@@ -52,7 +54,7 @@ MouseOverCaption() {
 ; ---------------------------------------------------------------- メニュー
 
 SetupTray() {
-    A_IconTip := "wincolor - ウィンドウ着色"
+    A_IconTip := "wincolor v" WINCOLOR_VERSION " - ウィンドウ着色"
     tray := A_TrayMenu
     tray.Delete()
     tray.Add("ウィンドウ一覧から着色…", ShowWindowList)
@@ -115,7 +117,7 @@ ShowHelp(*) {
         "・Explorer / Terminal / Chrome などタイトルバー自前描画のアプリは`n"
         "  タイトルバー色が効かないため、周囲のオーバーレイ色枠で識別します`n"
         "・管理者権限のウィンドウには、本ツールも管理者で実行しないと効きません",
-        "wincolor - 使い方")
+        "wincolor v" WINCOLOR_VERSION " - 使い方")
 }
 
 ; ---------------------------------------------------------------- 着色処理
