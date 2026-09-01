@@ -7,20 +7,35 @@
 2. **オーバーレイ色枠** — ウィンドウの周囲 3px に追従表示されるクリック透過の色枠。
    タイトルバー自前描画のアプリ(Explorer, Windows Terminal, Chrome, 新メモ帳, Electron 系)では
    DWM のタイトルバー色が自前描画に隠されてしまうため、こちらが識別マークになる。
-   枠は対象ウィンドウの直下の Z オーダーに置かれるため、対象が背面に隠れれば枠も隠れる。
+   枠は対象ウィンドウの直上の Z オーダーに追従し、対象が背面に隠れれば枠も隠れる。
 
 ## 要件
 
 - Windows 11 (build 22000 以降)
-- [AutoHotkey v2](https://www.autohotkey.com/) — `winget install AutoHotkey.AutoHotkey`
 
-## 実行
+## インストール
+
+### MSI (推奨)
+
+[Releases](https://github.com/tryandhappy/wincolor/releases) から
+`wincolor-windows-vX.Y.Z.msi` をダウンロードして実行。
+
+- ユーザー単位インストール(管理者権限不要、`%LocalAppData%\Programs\wincolor`)
+- スタートメニューとスタートアップにショートカットを作成(ログイン時に自動起動)
+- アンインストールは「設定 > アプリ」から
+- AutoHotkey のインストールは不要(単体 exe)
+
+### ポータブル zip
+
+Releases の `wincolor-windows-vX.Y.Z.zip` を展開して `wincolor.exe` を実行するだけ。
+
+### ソースから実行(開発時)
+
+[AutoHotkey v2](https://www.autohotkey.com/)(`winget install AutoHotkey.AutoHotkey`)を入れて:
 
 ```powershell
 & "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe" .\wincolor.ahk
 ```
-
-(AutoHotkey インストール済みなら `.ahk` のダブルクリックでも起動)
 
 ## 使い方
 

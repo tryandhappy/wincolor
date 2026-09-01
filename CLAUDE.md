@@ -13,11 +13,19 @@
 
 - **バージョンは OS ごとに独立**して管理する。タグは OS プレフィックス付き:
   `windows-v1.0.0` / `macos-v0.1.0` / `linux-v0.1.0`
-- タグを push すると GitHub Actions (.github/workflows/release.yml) が
-  該当OSの zip を添付した Release を自動作成する
+- タグを push すると GitHub Actions (.github/workflows/release.yml) が Release を自動作成する。
+  Windows は Ahk2Exe で単体 exe にコンパイルし **MSI (WiX) とポータブル zip** を添付、
+  macOS/Linux は実装が入るまでソース zip のみ
 - リリース手順(例: Windows 版):
   1. `windows/wincolor.ahk` の `WINCOLOR_VERSION` を更新してコミット
   2. `git tag windows-vX.Y.Z && git push origin main --tags`(push は指示があったときのみ)
+- MSI の注意:
+  - バージョンは数値3組 (X.Y.Z) のみ。`-rc1` 等のサフィックスは MSI では使えない
+  - WiX は **5.0.2 に固定**(v6 以降は OSMF 同意が必要になったため)
+  - wxs は windows/installer/wincolor.wxs。ユーザー単位インストール
+    (%LocalAppData%\Programs\wincolor)、スタートメニューとスタートアップに
+    ショートカット作成、UpgradeCode 固定でメジャーアップグレード対応
+  - ローカル検証: `wix build windows/installer/wincolor.wxs -d ProductVersion=X.Y.Z -d SourceDir=<exeとcolors.jsonのある場所> -o out.msi`
 
 ## 構成
 

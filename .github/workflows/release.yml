@@ -12,12 +12,69 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  # Windows: Ahk2Exe で単体 exe にコンパイルし、MSI (WiX 5) とポータブル zip を添付
+  windows:
+    if: startsWith(github.ref_name, 'windows-v')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: バージョン抽出 (windows-v1.0.0 → 1.0.0)
+        id: v
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#windows-v}" >> "$GITHUB_OUTPUT"
+
+      - name: AutoHotkey と Ahk2Exe を取得
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          curl.exe -sSL -o ahk.zip https://github.com/AutoHotkey/AutoHotkey/releases/download/v2.0.19/AutoHotkey_2.0.19.zip
+          Expand-Archive ahk.zip -DestinationPath ahk
+          $asset = (Invoke-RestMethod https://api.github.com/repos/AutoHotkey/Ahk2Exe/releases/latest).assets |
+            Where-Object name -like '*.zip' | Select-Object -First 1
+          curl.exe -sSL -o ahk2exe.zip $asset.browser_download_url
+          Expand-Archive ahk2exe.zip -DestinationPath ahk2exe
+
+      - name: 単体 exe にコンパイル
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory build | Out-Null
+          Copy-Item windows\wincolor.ahk, shared\colors.json build\
+          $p = Start-Process -Wait -PassThru ahk2exe\Ahk2Exe.exe -ArgumentList `
+            '/silent', 'verbose', '/in', 'build\wincolor.ahk', '/out', 'build\wincolor.exe', '/base', 'ahk\AutoHotkey64.exe'
+          if ($p.ExitCode -ne 0 -or -not (Test-Path build\wincolor.exe)) { throw "Ahk2Exe failed (exit=$($p.ExitCode))" }
+
+      - name: MSI をビルド (WiX 5)
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          New-Item -ItemType Directory dist | Out-Null
+          wix build windows/installer/wincolor.wxs `
+            -d ProductVersion=${{ steps.v.outputs.version }} -d SourceDir=build `
+            -o "dist/wincolor-windows-v${{ steps.v.outputs.version }}.msi"
+
+      - name: ポータブル zip を作成 (exe + colors.json + ソース + README)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory pkg\wincolor | Out-Null
+          Copy-Item build\wincolor.exe, build\colors.json, windows\wincolor.ahk, windows\README.md pkg\wincolor\
+          Compress-Archive -Path pkg\wincolor -DestinationPath "dist/wincolor-windows-v${{ steps.v.outputs.version }}.zip"
+
+      - name: Release 作成
+        uses: softprops/action-gh-release@v2
+        with:
+          name: wincolor windows v${{ steps.v.outputs.version }}
+          files: dist/*
+          generate_release_notes: true
+
+  # macOS / Linux: 実装が入るまではソース zip のみ
+  unix:
+    if: startsWith(github.ref_name, 'macos-v') || startsWith(github.ref_name, 'linux-v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: タグを解析 (windows-v1.0.0 → os=windows, version=1.0.0)
+      - name: タグを解析
         id: tag
         run: |
           os="${GITHUB_REF_NAME%%-v*}"
@@ -25,7 +82,7 @@ jobs:
           echo "os=$os" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: パッケージ作成 (対象OSのディレクトリ + 共有ファイル)
+      - name: パッケージ作成
         run: |
           os='${{ steps.tag.outputs.os }}'
           version='${{ steps.tag.outputs.version }}'

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- wincolor MSI インストーラ定義 (WiX v4+ スキーマ)
+     ビルド例:
+       wix build wincolor.wxs -d ProductVersion=1.0.0 -d SourceDir=build -o wincolor.msi
+     - ユーザー単位インストール (管理者権限不要、%LocalAppData%\Programs\wincolor)
+     - スタートメニューとスタートアップにショートカットを作成 (常駐ツールのため)
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="wincolor"
+           Manufacturer="tryandhappy"
+           Version="$(var.ProductVersion)"
+           Language="1033"
+           Scope="perUser"
+           Compressed="yes"
+           UpgradeCode="5489B771-CDB1-4A7D-8675-CB3C53C0E3BA">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of wincolor is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsDir" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="wincolor" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <StandardDirectory Id="StartupFolder" />
+
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="MainExe" Guid="CCA54116-3F4E-4F50-86BD-C517ED4A3226">
+        <File Id="WincolorExe" Source="$(var.SourceDir)\wincolor.exe" />
+        <RegistryValue Root="HKCU" Key="Software\tryandhappy\wincolor"
+                       Name="exe" Type="string" Value="[INSTALLFOLDER]wincolor.exe" KeyPath="yes" />
+        <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
+      </Component>
+      <Component Id="ColorsJson" Guid="C338FC41-4162-4418-AADD-6B98C84E6A88">
+        <File Id="ColorsJsonFile" Source="$(var.SourceDir)\colors.json" />
+        <RegistryValue Root="HKCU" Key="Software\tryandhappy\wincolor"
+                       Name="colors" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut" Guid="67551C85-206B-4F34-A25D-9149EAB6FF58">
+        <Shortcut Id="StartMenuSc" Name="wincolor"
+                  Target="[INSTALLFOLDER]wincolor.exe" WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKCU" Key="Software\tryandhappy\wincolor"
+                       Name="startmenu" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <StandardDirectory Id="StartupFolder">
+      <Component Id="StartupShortcut" Guid="13E2F21D-B133-46AF-888B-F54777D5FF81">
+        <Shortcut Id="StartupSc" Name="wincolor"
+                  Target="[INSTALLFOLDER]wincolor.exe" WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKCU" Key="Software\tryandhappy\wincolor"
+                       Name="startup" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="wincolor" Level="1">
+      <ComponentRef Id="MainExe" />
+      <ComponentRef Id="ColorsJson" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="StartupShortcut" />
+    </Feature>
+  </Package>
+</Wix>

@@ -334,10 +334,17 @@ TruncateTitle(t) {
 
 EscapeMenuText(t) => StrReplace(t, "&", "&&")
 
-; shared/colors.json からプリセットを読む。無ければ組み込み既定を使う
+; colors.json からプリセットを読む。無ければ組み込み既定を使う
+; 探索順: exe/スクリプトと同じフォルダ(MSI配布) → リポジトリ構成 (../shared/)
 LoadPresets() {
-    path := A_ScriptDir "\..\shared\colors.json"
-    if !FileExist(path)
+    path := ""
+    for cand in [A_ScriptDir "\colors.json", A_ScriptDir "\..\shared\colors.json"] {
+        if FileExist(cand) {
+            path := cand
+            break
+        }
+    }
+    if path = ""
         return DefaultPresets()
     txt := FileRead(path, "UTF-8")
     presets := []
