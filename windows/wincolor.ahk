@@ -1,7 +1,7 @@
 ; wincolor - ウィンドウ単位で色を付けて見分けるツール (Windows版)
 ; 要件: Windows 11 (build 22000+), AutoHotkey v2
 ; 使い方:
-;   - 任意のウィンドウのタイトルバーを Ctrl+右クリック → 色メニュー
+;   - 任意のウィンドウのタイトルバーを Ctrl+右クリック、または右ボタン長押し → 色メニュー
 ;   - タスクトレイアイコンのメニュー「ウィンドウ一覧から着色…」でも選択可
 ;
 ; 着色は2系統を併用する:
@@ -20,6 +20,7 @@ DWMWA_TEXT_COLOR    := 36
 DWMWA_COLOR_DEFAULT := 0xFFFFFFFF
 
 FRAME_THICKNESS := 3   ; オーバーレイ枠の太さ(px)
+LONG_PRESS_SEC  := 0.4 ; タイトルバー右ボタン長押しの判定秒数
 
 CoordMode "Mouse", "Screen"
 
@@ -31,12 +32,27 @@ SetupTray()
 
 ; ---------------------------------------------------------------- ホットキー
 
-; タイトルバー上でのみ Ctrl+右クリックを乗っ取る(それ以外は通常動作)
+; タイトルバー上でのみ介入する(それ以外は通常動作)
 #HotIf MouseOverCaption()
 ^RButton:: {
     MouseGetPos , , &hwnd
     if hwnd
         ShowColorMenu(hwnd)
+}
+
+; 右ボタン長押しで色メニュー。短く押せば通常の右クリックとして透過
+$RButton:: {
+    MouseGetPos , , &hwnd
+    if !hwnd
+        return
+    if KeyWait("RButton", "T" LONG_PRESS_SEC) {
+        ; 判定時間内に離された → 通常の右クリックを再送($ により再トリガーしない)
+        Send "{Blind}{Click Right}"
+    } else {
+        ; 長押し → ボタンが離されてからメニュー表示(離した瞬間の誤選択を防ぐ)
+        KeyWait "RButton"
+        ShowColorMenu(hwnd)
+    }
 }
 #HotIf
 
@@ -109,7 +125,8 @@ ShowColorMenu(hwnd, *) {
 ShowHelp(*) {
     MsgBox(
         "■ 使い方`n"
-        "・ウィンドウのタイトルバーを Ctrl+右クリック → 色を選択`n"
+        "・ウィンドウのタイトルバーを Ctrl+右クリック、`n"
+        "  または右ボタン長押し(0.4秒) → 色を選択`n"
         "・またはトレイアイコン右クリック →「ウィンドウ一覧から着色…」`n`n"
         "■ 注意`n"
         "・Windows 11 専用(DWM API を使用)`n"
