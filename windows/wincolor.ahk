@@ -23,6 +23,7 @@ CoordMode "Mouse", "Screen"
 
 Presets := LoadPresets()
 Applied := Map()   ; hwnd -> {hex, gui, last}
+IconCache := Map() ; hex -> HBITMAP (メニューの色見本)
 
 SetupTray()
 
@@ -93,8 +94,10 @@ ShowColorMenu(hwnd, *) {
     m.Add(title = "" ? "(無題)" : EscapeMenuText(title), (*) => 0)
     m.Disable("1&")
     m.Add()
-    for p in Presets
+    for p in Presets {
         m.Add(p.label, ApplyPreset.Bind(hwnd, p))
+        m.SetIcon(p.label, "HBITMAP:*" GetColorIcon(p.hex))
+    }
     m.Add()
     m.Add("カスタム色…", ApplyCustom.Bind(hwnd))
     m.Add("既定に戻す", ResetWindow.Bind(hwnd))
@@ -257,6 +260,36 @@ SetFrameRegion(hwnd, w, h, t, rounded := true) {
     DllCall("CombineRgn", "ptr", outer, "ptr", outer, "ptr", inner, "int", 4)  ; RGN_DIFF
     DllCall("DeleteObject", "ptr", inner)
     DllCall("SetWindowRgn", "ptr", hwnd, "ptr", outer, "int", 1)  ; リージョンの所有権はOSへ移る
+}
+
+; メニュー用の色見本ビットマップ(角丸風の塗り+薄いグレー枠)。hex 単位でキャッシュする
+GetColorIcon(hex) {
+    global IconCache
+    if IconCache.Has(hex)
+        return IconCache[hex]
+    size := SysGet(49)   ; SM_CXSMICON
+    hdc := DllCall("GetDC", "ptr", 0, "ptr")
+    mdc := DllCall("CreateCompatibleDC", "ptr", hdc, "ptr")
+    hbm := DllCall("CreateCompatibleBitmap", "ptr", hdc, "int", size, "int", size, "ptr")
+    obm := DllCall("SelectObject", "ptr", mdc, "ptr", hbm, "ptr")
+    rect := Buffer(16, 0)
+    NumPut("int", size, rect, 8), NumPut("int", size, rect, 12)
+    ; メニュー背景に合わせて余白を白ではなくメニュー色で塗る
+    DllCall("FillRect", "ptr", mdc, "ptr", rect, "ptr", DllCall("GetSysColorBrush", "int", 4, "ptr"))  ; COLOR_MENU
+    br := DllCall("CreateSolidBrush", "uint", HexToColorref(hex), "ptr")
+    pen := DllCall("CreatePen", "int", 0, "int", 1, "uint", 0x808080, "ptr")
+    obr := DllCall("SelectObject", "ptr", mdc, "ptr", br, "ptr")
+    open := DllCall("SelectObject", "ptr", mdc, "ptr", pen, "ptr")
+    DllCall("RoundRect", "ptr", mdc, "int", 1, "int", 1, "int", size - 1, "int", size - 1, "int", 4, "int", 4)
+    DllCall("SelectObject", "ptr", mdc, "ptr", obr, "ptr")
+    DllCall("SelectObject", "ptr", mdc, "ptr", open, "ptr")
+    DllCall("DeleteObject", "ptr", br)
+    DllCall("DeleteObject", "ptr", pen)
+    DllCall("SelectObject", "ptr", mdc, "ptr", obm, "ptr")
+    DllCall("DeleteDC", "ptr", mdc)
+    DllCall("ReleaseDC", "ptr", 0, "ptr", hdc)
+    IconCache[hex] := hbm
+    return hbm
 }
 
 ; ---------------------------------------------------------------- 色選択ダイアログ
