@@ -51,7 +51,7 @@ jobs:
         run: |
           dotnet tool install --global wix --version 5.0.2
           New-Item -ItemType Directory dist | Out-Null
-          wix build windows/installer/wincolor.wxs `
+          wix build windows/installer/wincolor.wxs -pdbtype none `
             -d ProductVersion=${{ steps.v.outputs.version }} -d SourceDir=build `
             -o "dist/wincolor-windows-v${{ steps.v.outputs.version }}.msi"
 
@@ -66,7 +66,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: wincolor windows v${{ steps.v.outputs.version }}
-          files: dist/*
+          files: |
+            dist/*.msi
+            dist/*.zip
           generate_release_notes: true
 
   # macOS / Linux: 実装が入るまではソース zip のみ
