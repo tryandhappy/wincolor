@@ -1,13 +1,19 @@
 name: Release
 
-# OSプレフィックス付きタグ (例: windows-v1.0.0) の push で該当OSの Release を作成する
-# 手動起動 (workflow_dispatch) の場合はタグを選んで実行すること
+# OSプレフィックス付きタグ (例: windows-v1.0.0) で該当OSの Release を作成する。
+# 起動方法は3通り:
+#   1. タグを push (git push origin windows-vX.Y.Z)
+#   2. GitHub Web で Release を作成 (release: published イベント)
+#   3. Actions タブから手動実行 (workflow_dispatch、タグを選んで実行)
+# ※ Actions (GITHUB_TOKEN) 自身が作った Release では再発火しないため 1 と 2 は重複しない
 on:
   push:
     tags:
       - "windows-v*"
       - "macos-v*"
       - "linux-v*"
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
