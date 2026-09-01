@@ -1,0 +1,10 @@
+{
+  "rules": [
+  ],
+  "_how_to": "rules にオブジェクトを追加すると、条件に合う新しいウィンドウへ自動で色が付く。title はウィンドウタイトル、exe は実行ファイル名の正規表現(大文字小文字無視)。どちらか片方だけでも可。color はプリセット名 (red / 赤 など) か #RRGGBB。上のルールが優先。変更はトレイの「再読み込み」で反映",
+  "_examples": [
+    { "title": "本番|prod", "color": "red" },
+    { "exe": "KeePass", "color": "purple" },
+    { "title": "ステージング", "exe": "chrome", "color": "orange" }
+  ]
+}

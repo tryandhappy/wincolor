@@ -47,7 +47,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory build | Out-Null
-          Copy-Item windows\wincolor.ahk, shared\colors.json build\
+          Copy-Item windows\wincolor.ahk, shared\colors.json, shared\rules.json build\
           $p = Start-Process -Wait -PassThru ahk2exe\Ahk2Exe.exe -ArgumentList `
             '/silent', 'verbose', '/in', 'build\wincolor.ahk', '/out', 'build\wincolor.exe', '/base', 'ahk\AutoHotkey64.exe'
           if ($p.ExitCode -ne 0 -or -not (Test-Path build\wincolor.exe)) { throw "Ahk2Exe failed (exit=$($p.ExitCode))" }
@@ -65,7 +65,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory pkg\wincolor | Out-Null
-          Copy-Item build\wincolor.exe, build\colors.json, windows\wincolor.ahk, windows\README.md pkg\wincolor\
+          Copy-Item build\wincolor.exe, build\colors.json, build\rules.json, windows\wincolor.ahk, windows\README.md pkg\wincolor\
           Compress-Archive -Path pkg\wincolor -DestinationPath "dist/wincolor-windows-v${{ steps.v.outputs.version }}.zip"
 
       - name: Release 作成

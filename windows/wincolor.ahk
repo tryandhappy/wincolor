@@ -3,6 +3,9 @@
 ; 使い方:
 ;   - 任意のウィンドウのタイトルバーを Ctrl+右クリック、または右ボタン長押し → 色メニュー
 ;   - タスクトレイアイコンのメニュー「ウィンドウ一覧から着色…」でも選択可
+;   - 自動ルール: rules.json に「タイトル/exe名の正規表現 → 色」を書くと新しいウィンドウに自動適用
+;   - ランチャー: wincolor.ahk run <色> <コマンド...> でアプリを起動し、その窓に色を付ける
+;     (ショートカットのリンク先に設定すると「起動時に色を決めておく」が実現できる)
 ;
 ; 着色は2系統を併用する:
 ;   1. DWM API (DwmSetWindowAttribute) による枠・タイトルバー・文字色
@@ -10,9 +13,13 @@
 ;   2. ウィンドウに追従するクリック透過のオーバーレイ色枠
 ;      → タイトルバー自前描画のアプリ(Explorer, Terminal, Chrome, 新メモ帳等)にも有効
 #Requires AutoHotkey v2.0
-#SingleInstance Force
+; 常駐モードとランチャーモード(run 引数)を同じスクリプトで担うため、
+; 単一インスタンス制御は手動で行う (ReplaceExistingResident)
+#SingleInstance Off
 
 WINCOLOR_VERSION := "1.0.1"
+RESIDENT_MARKER  := "wincolor_resident"   ; 常駐インスタンスの隠しウィンドウ識別タイトル
+WM_COPYDATA_MAGIC := 0x57434C31           ; 'WCL1'
 
 DWMWA_BORDER_COLOR  := 34
 DWMWA_CAPTION_COLOR := 35
@@ -23,12 +30,29 @@ FRAME_THICKNESS := 3   ; オーバーレイ枠の太さ(px)
 LONG_PRESS_SEC  := 0.4 ; タイトルバー右ボタン長押しの判定秒数
 
 CoordMode "Mouse", "Screen"
+A_IconHidden := true   ; ランチャーモードではトレイアイコンを出さない
 
 Presets := LoadPresets()
-Applied := Map()   ; hwnd -> {hex, gui, last}
-IconCache := Map() ; hex -> HBITMAP (メニューの色見本)
+Applied := Map()    ; hwnd -> {hex, gui, last}
+IconCache := Map()  ; hex -> HBITMAP (メニューの色見本)
+RuleDone := Map()   ; hwnd -> true (手動・ルール問わず一度色を確定した窓。ルールが上書きしない)
+RuleTitles := Map() ; hwnd -> 最後に評価したタイトル (変化時のみ再評価)
 
+; ---------------------------------------------------------------- ランチャーモード
+; wincolor.ahk run <色(プリセット名 or #RRGGBB)> <コマンド...>
+if A_Args.Length >= 3 && A_Args[1] = "run" {
+    RunLauncher(A_Args)   ; 中で ExitApp する
+}
+
+; ---------------------------------------------------------------- 常駐モード
+ReplaceExistingResident()
+DllCall("SetWindowText", "ptr", A_ScriptHwnd, "str", RESIDENT_MARKER)
+A_IconHidden := false
+Rules := LoadRules()
+OnMessage(0x4A, OnCopyData)   ; ランチャーからの着色依頼を受ける
 SetupTray()
+if Rules.Length
+    SetTimer(RuleTick, 1000)
 
 ; ---------------------------------------------------------------- ホットキー
 
@@ -127,7 +151,9 @@ ShowHelp(*) {
         "■ 使い方`n"
         "・ウィンドウのタイトルバーを Ctrl+右クリック、`n"
         "  または右ボタン長押し(0.4秒) → 色を選択`n"
-        "・またはトレイアイコン右クリック →「ウィンドウ一覧から着色…」`n`n"
+        "・またはトレイアイコン右クリック →「ウィンドウ一覧から着色…」`n"
+        "・rules.json に自動ルール(タイトル/exe名 → 色)を書ける`n"
+        "・ショートカット起動: wincolor.ahk run <色> <コマンド>`n`n"
         "■ 注意`n"
         "・Windows 11 専用(DWM API を使用)`n"
         "・色はウィンドウを閉じるまで有効(アプリ再起動で戻ります)`n"
@@ -165,6 +191,7 @@ ApplyColorTo(hwnd, hex, textHex) {
         Applied[hwnd].gui.Destroy()
     rec := {hex: StrReplace(hex, "#"), gui: MakeFrame(StrReplace(hex, "#")), last: ""}
     Applied[hwnd] := rec
+    RuleDone[hwnd] := true   ; 一度色を確定した窓には自動ルールを適用しない
     UpdateFrame(hwnd, rec)
     SetTimer(FrameTick, 50)
 }
@@ -176,6 +203,7 @@ ResetWindow(hwnd, *) {
         Applied[hwnd].gui.Destroy()
         Applied.Delete(hwnd)
     }
+    RuleDone[hwnd] := true   ; ユーザーが既定に戻した窓を自動ルールで塗り直さない
 }
 
 ResetAll(*) {
@@ -325,6 +353,203 @@ PickColor() {
     if !DllCall("comdlg32\ChooseColorW", "ptr", cc)
         return -1
     return NumGet(cc, 24, "uint")
+}
+
+; ---------------------------------------------------------------- 常駐管理・ランチャー・自動ルール
+
+; 既存の常駐インスタンスがいれば終了させる (#SingleInstance Force 相当)
+ReplaceExistingResident() {
+    loop 5 {
+        hwnd := FindResident()
+        if !hwnd
+            break
+        pid := 0
+        DllCall("GetWindowThreadProcessId", "ptr", hwnd, "uint*", &pid)
+        if pid && pid != DllCall("GetCurrentProcessId") {
+            ProcessClose(pid)
+            ProcessWaitClose(pid, 3)
+        } else {
+            break
+        }
+    }
+}
+
+FindResident() {
+    return DllCall("FindWindow", "str", "AutoHotkey", "str", RESIDENT_MARKER, "ptr")
+}
+
+; ランチャーモード: アプリを起動してそのウィンドウに色を付ける
+RunLauncher(args) {
+    colorSpec := args[2]
+    if !ResolveColor(colorSpec) {
+        MsgBox("不明な色です: " colorSpec "`nプリセット名 (red / 赤 など) か #RRGGBB を指定してください。", "wincolor run")
+        ExitApp
+    }
+    cmd := ""
+    i := 3
+    while i <= args.Length {
+        part := args[i]
+        cmd .= (cmd = "" ? "" : " ") (InStr(part, " ") ? '"' part '"' : part)
+        i++
+    }
+    existing := Map()
+    for h in WinGetList()
+        existing[h] := true
+    try Run(cmd, , , &pid)
+    catch as e {
+        MsgBox("起動に失敗しました: " cmd "`n" e.Message, "wincolor run")
+        ExitApp
+    }
+    hwnd := 0
+    if WinWait("ahk_pid " pid, , 5) {
+        hwnd := WinExist("ahk_pid " pid)
+    } else {
+        ; PID を引き継がないアプリ (Windows Terminal 等): 新規ウィンドウの出現を待つ
+        deadline := A_TickCount + 10000
+        while A_TickCount < deadline {
+            for h in WinGetList() {
+                if !existing.Has(h) && WinGetTitle("ahk_id " h) != "" && !IsCloaked(h) {
+                    hwnd := h
+                    break 2
+                }
+            }
+            Sleep 250
+        }
+    }
+    if hwnd {
+        resident := FindResident()
+        if resident {
+            SendColorCmd(resident, hwnd "|" colorSpec)
+        } else {
+            ; 常駐なし: DWM 色のみ直接適用 (オーバーレイ枠の追従は常駐が必要)
+            p := ResolveColor(colorSpec)
+            c := HexToColorref(p.hex)
+            SetAttr(hwnd, DWMWA_CAPTION_COLOR, c)
+            SetAttr(hwnd, DWMWA_BORDER_COLOR, c)
+            SetAttr(hwnd, DWMWA_TEXT_COLOR, HexToColorref(p.textHex))
+        }
+    } else {
+        TrayTip("対象ウィンドウが見つかりませんでした", "wincolor run")
+        Sleep 1500
+    }
+    ExitApp
+}
+
+; WM_COPYDATA で常駐に「hwnd|色」を送る
+SendColorCmd(target, str) {
+    buf := Buffer(StrPut(str, "UTF-16"))
+    StrPut(str, buf, "UTF-16")
+    cds := Buffer(A_PtrSize * 3, 0)
+    NumPut("ptr", WM_COPYDATA_MAGIC, cds, 0)
+    NumPut("ptr", buf.Size, cds, A_PtrSize)
+    NumPut("ptr", buf.Ptr, cds, A_PtrSize * 2)
+    result := 0
+    DllCall("SendMessageTimeoutW", "ptr", target, "uint", 0x4A, "ptr", A_ScriptHwnd,
+            "ptr", cds.Ptr, "uint", 0x2, "uint", 3000, "ptr*", &result)  ; SMTO_ABORTIFHUNG
+}
+
+; 常駐側: ランチャーからの着色依頼を受信
+OnCopyData(wParam, lParam, msg, hwnd) {
+    if NumGet(lParam, 0, "ptr") != WM_COPYDATA_MAGIC
+        return
+    size := NumGet(lParam, A_PtrSize, "ptr")
+    ptr := NumGet(lParam, A_PtrSize * 2, "ptr")
+    parts := StrSplit(StrGet(ptr, size // 2, "UTF-16"), "|")
+    if parts.Length >= 2 {
+        target := Integer(parts[1])
+        p := ResolveColor(parts[2])
+        if p && WinExist("ahk_id " target)
+            ApplyColorTo(target, p.hex, p.textHex)
+    }
+    return 1
+}
+
+; プリセット名 (name/label) または #RRGGBB を {hex, textHex} に解決
+ResolveColor(s) {
+    for p in Presets
+        if p.name = s || p.label = s
+            return p
+    if RegExMatch(s, "^#?[0-9A-Fa-f]{6}$") {
+        hex := "#" StrReplace(s, "#")
+        c := HexToColorref(hex)
+        r := c & 0xFF, g := (c >> 8) & 0xFF, b := (c >> 16) & 0xFF
+        lum := 0.299 * r + 0.587 * g + 0.114 * b
+        return {name: s, label: s, hex: hex, textHex: lum > 140 ? "#000000" : "#FFFFFF"}
+    }
+    return ""
+}
+
+; 自動ルール: 新しいウィンドウ/タイトルが変わったウィンドウをルールと照合して着色
+RuleTick() {
+    live := Map()
+    for hwnd in WinGetList() {
+        live[hwnd] := true
+        if RuleDone.Has(hwnd) || hwnd = A_ScriptHwnd || IsOwnFrame(hwnd)
+            continue
+        title := WinGetTitle("ahk_id " hwnd)
+        if title = "" || IsCloaked(hwnd)
+            continue
+        if RuleTitles.Has(hwnd) && RuleTitles[hwnd] = title
+            continue
+        RuleTitles[hwnd] := title
+        exe := ""
+        try exe := WinGetProcessName("ahk_id " hwnd)
+        for r in Rules {
+            if r.title != "" && !RegExMatch(title, "i)" r.title)
+                continue
+            if r.exe != "" && !RegExMatch(exe, "i)" r.exe)
+                continue
+            p := ResolveColor(r.color)
+            if p
+                ApplyColorTo(hwnd, p.hex, p.textHex)
+            break
+        }
+    }
+    ; 閉じられたウィンドウの記録を掃除
+    for hwnd in [RuleTitles.Clone()*]
+        if !live.Has(hwnd)
+            RuleTitles.Delete(hwnd)
+    for hwnd in [RuleDone.Clone()*]
+        if !live.Has(hwnd)
+            RuleDone.Delete(hwnd)
+}
+
+; rules.json を読む。探索順は colors.json と同じ
+; 形式: { "rules": [ { "title": "正規表現", "exe": "正規表現", "color": "プリセット名 or #RRGGBB" } ] }
+; title / exe は片方だけでも可 (指定したものすべてにマッチしたら適用、上のルールが優先)
+LoadRules() {
+    path := ""
+    for cand in [A_ScriptDir "\rules.json", A_ScriptDir "\..\shared\rules.json"] {
+        if FileExist(cand) {
+            path := cand
+            break
+        }
+    }
+    if path = ""
+        return []
+    txt := FileRead(path, "UTF-8")
+    rules := []
+    if !RegExMatch(txt, 's)"rules"\s*:\s*\[(.*?)\]', &sec)
+        return rules
+    pos := 1
+    while pos := RegExMatch(sec[1], '\{[^{}]*\}', &m, pos) {
+        r := {title: "", exe: "", color: ""}
+        if RegExMatch(m[0], '"title"\s*:\s*"([^"]*)"', &f)
+            r.title := JsonUnescape(f[1])
+        if RegExMatch(m[0], '"exe"\s*:\s*"([^"]*)"', &f)
+            r.exe := JsonUnescape(f[1])
+        if RegExMatch(m[0], '"color"\s*:\s*"([^"]*)"', &f)
+            r.color := f[1]
+        if r.color != "" && (r.title != "" || r.exe != "")
+            rules.Push(r)
+        pos += m.Len
+    }
+    return rules
+}
+
+JsonUnescape(s) {
+    s := StrReplace(s, '\\', '\')
+    return s
 }
 
 ; ---------------------------------------------------------------- ユーティリティ

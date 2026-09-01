@@ -45,6 +45,38 @@ Releases の `wincolor-windows-vX.Y.Z.zip` を展開して `wincolor.exe` を実
 - メニュー: 色プリセット(`shared/colors.json` で編集可能) / カスタム色… / 既定に戻す
 - トレイメニューの「すべて既定に戻す」で一括リセット
 
+## 自動ルール
+
+`rules.json`(exe と同じフォルダ、開発時は `shared/rules.json`)にルールを書くと、
+条件に合う新しいウィンドウへ自動で色が付く:
+
+```json
+{
+  "rules": [
+    { "title": "本番|prod", "color": "red" },
+    { "exe": "KeePass", "color": "purple" }
+  ]
+}
+```
+
+- `title` / `exe` は正規表現(大文字小文字無視)。片方だけでも可。上のルールが優先
+- `color` はプリセット名(`red` / `赤`)か `#RRGGBB`
+- タイトルは変化を監視するので、SSH 接続後にタイトルへホスト名が出るケースにも効く
+- 手動で色を付けた/既定に戻したウィンドウにはルールは適用されない
+- 変更はトレイの「再読み込み」で反映
+
+## ショートカットから色付きで起動(ランチャー)
+
+```
+wincolor.exe run <色> <コマンド...>
+```
+
+例: ショートカットのリンク先に
+`"C:\...\wincolor.exe" run red "C:\Program Files\PuTTY\putty.exe" user@prod-server`
+と書くと、そのショートカットから起動したウィンドウだけ赤になる。
+常駐中の wincolor に依頼する仕組みなので、常駐していればオーバーレイ枠も付く。
+(開発時は `AutoHotkey64.exe wincolor.ahk run red ...`)
+
 ## 自動起動
 
 `Win+R` → `shell:startup` → 開いたフォルダに `wincolor.ahk` へのショートカットを置く。

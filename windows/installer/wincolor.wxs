@@ -37,6 +37,11 @@
         <RegistryValue Root="HKCU" Key="Software\tryandhappy\wincolor"
                        Name="colors" Type="integer" Value="1" KeyPath="yes" />
       </Component>
+      <Component Id="RulesJson" Guid="F95316F5-17BF-4D09-803D-168430CD2A81">
+        <File Id="RulesJsonFile" Source="$(var.SourceDir)\rules.json" />
+        <RegistryValue Root="HKCU" Key="Software\tryandhappy\wincolor"
+                       Name="rules" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
     </DirectoryRef>
 
     <StandardDirectory Id="ProgramMenuFolder">
@@ -60,6 +65,7 @@
     <Feature Id="Main" Title="wincolor" Level="1">
       <ComponentRef Id="MainExe" />
       <ComponentRef Id="ColorsJson" />
+      <ComponentRef Id="RulesJson" />
       <ComponentRef Id="StartMenuShortcut" />
       <ComponentRef Id="StartupShortcut" />
     </Feature>
