@@ -1,11 +1,11 @@
 {
   "presets": [
-    { "name": "red",    "label": "赤 (本番)",     "hex": "#C42B1C", "textHex": "#FFFFFF" },
-    { "name": "orange", "label": "橙 (ステージング)", "hex": "#CA5010", "textHex": "#FFFFFF" },
-    { "name": "yellow", "label": "黄 (検証)",     "hex": "#C19C00", "textHex": "#000000" },
-    { "name": "green",  "label": "緑 (開発)",     "hex": "#107C10", "textHex": "#FFFFFF" },
-    { "name": "blue",   "label": "青",           "hex": "#0F6CBD", "textHex": "#FFFFFF" },
-    { "name": "purple", "label": "紫",           "hex": "#7A34A3", "textHex": "#FFFFFF" },
-    { "name": "gray",   "label": "灰",           "hex": "#5D5D5D", "textHex": "#FFFFFF" }
+    { "name": "red",    "label": "赤", "hex": "#C42B1C", "textHex": "#FFFFFF" },
+    { "name": "orange", "label": "橙", "hex": "#CA5010", "textHex": "#FFFFFF" },
+    { "name": "yellow", "label": "黄", "hex": "#C19C00", "textHex": "#000000" },
+    { "name": "green",  "label": "緑", "hex": "#107C10", "textHex": "#FFFFFF" },
+    { "name": "blue",   "label": "青", "hex": "#0F6CBD", "textHex": "#FFFFFF" },
+    { "name": "purple", "label": "紫", "hex": "#7A34A3", "textHex": "#FFFFFF" },
+    { "name": "gray",   "label": "灰", "hex": "#5D5D5D", "textHex": "#FFFFFF" }
   ]
 }

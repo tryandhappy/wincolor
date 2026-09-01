@@ -55,4 +55,4 @@
 
 ## 色プリセット
 
-`shared/colors.json` に定義。名前・HEX 値・用途の目安(例: red=本番)を持つ。
+`shared/colors.json` に定義。名前・表示ラベル・HEX 値・タイトル文字色を持つ。
