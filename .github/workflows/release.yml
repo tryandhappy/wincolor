@@ -1,12 +1,14 @@
 name: Release
 
 # OSプレフィックス付きタグ (例: windows-v1.0.0) の push で該当OSの Release を作成する
+# 手動起動 (workflow_dispatch) の場合はタグを選んで実行すること
 on:
   push:
     tags:
       - "windows-v*"
       - "macos-v*"
       - "linux-v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
