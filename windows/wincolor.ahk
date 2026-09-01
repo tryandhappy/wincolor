@@ -350,12 +350,27 @@ LoadPresets() {
 
 DefaultPresets() {
     return [
-        {name: "red",    label: "赤", hex: "#C42B1C", textHex: "#FFFFFF"},
-        {name: "orange", label: "橙", hex: "#CA5010", textHex: "#FFFFFF"},
-        {name: "yellow", label: "黄", hex: "#C19C00", textHex: "#000000"},
-        {name: "green",  label: "緑", hex: "#107C10", textHex: "#FFFFFF"},
-        {name: "blue",   label: "青", hex: "#0F6CBD", textHex: "#FFFFFF"},
-        {name: "purple", label: "紫", hex: "#7A34A3", textHex: "#FFFFFF"},
-        {name: "gray",   label: "灰", hex: "#5D5D5D", textHex: "#FFFFFF"}
+        {name: "red",         label: "赤",   hex: "#C42B1C", textHex: "#FFFFFF"},
+        {name: "darkred",     label: "深紅", hex: "#7E1416", textHex: "#FFFFFF"},
+        {name: "pink",        label: "桃",   hex: "#E3008C", textHex: "#FFFFFF"},
+        {name: "orange",      label: "橙",   hex: "#CA5010", textHex: "#FFFFFF"},
+        {name: "apricot",     label: "杏",   hex: "#E8A33D", textHex: "#000000"},
+        {name: "brown",       label: "茶",   hex: "#8E562E", textHex: "#FFFFFF"},
+        {name: "yellow",      label: "黄",   hex: "#C19C00", textHex: "#000000"},
+        {name: "lightyellow", label: "薄黄", hex: "#E8DB4F", textHex: "#000000"},
+        {name: "lime",        label: "黄緑", hex: "#7CB342", textHex: "#000000"},
+        {name: "green",       label: "緑",   hex: "#107C10", textHex: "#FFFFFF"},
+        {name: "darkgreen",   label: "深緑", hex: "#1B5E20", textHex: "#FFFFFF"},
+        {name: "teal",        label: "青緑", hex: "#00897B", textHex: "#FFFFFF"},
+        {name: "cyan",        label: "水",   hex: "#00B7C3", textHex: "#FFFFFF"},
+        {name: "blue",        label: "青",   hex: "#0F6CBD", textHex: "#FFFFFF"},
+        {name: "navy",        label: "紺",   hex: "#1F3864", textHex: "#FFFFFF"},
+        {name: "sky",         label: "空",   hex: "#5B9BD5", textHex: "#000000"},
+        {name: "purple",      label: "紫",   hex: "#7A34A3", textHex: "#FFFFFF"},
+        {name: "wisteria",    label: "藤",   hex: "#A78BDA", textHex: "#000000"},
+        {name: "magenta",     label: "紅紫", hex: "#B4009E", textHex: "#FFFFFF"},
+        {name: "gray",        label: "灰",   hex: "#5D5D5D", textHex: "#FFFFFF"},
+        {name: "lightgray",   label: "薄灰", hex: "#A6A6A6", textHex: "#000000"},
+        {name: "darkgray",    label: "暗灰", hex: "#333333", textHex: "#FFFFFF"}
     ]
 }
