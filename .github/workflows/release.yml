@@ -36,7 +36,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          curl.exe -sSL -o ahk.zip https://github.com/AutoHotkey/AutoHotkey/releases/download/v2.0.19/AutoHotkey_2.0.19.zip
+          curl.exe -sSL -o ahk.zip https://github.com/AutoHotkey/AutoHotkey/releases/download/v2.0.27/AutoHotkey_2.0.27.zip
           Expand-Archive ahk.zip -DestinationPath ahk
           $asset = (Invoke-RestMethod https://api.github.com/repos/AutoHotkey/Ahk2Exe/releases/latest).assets |
             Where-Object name -like '*.zip' | Select-Object -First 1
