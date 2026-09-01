@@ -12,7 +12,7 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
-WINCOLOR_VERSION := "1.0.0"
+WINCOLOR_VERSION := "1.0.1"
 
 DWMWA_BORDER_COLOR  := 34
 DWMWA_CAPTION_COLOR := 35
