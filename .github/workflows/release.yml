@@ -77,33 +77,106 @@ jobs:
             dist/*.zip
           generate_release_notes: true
 
-  # macOS / Linux: 実装が入るまではソース zip のみ
-  unix:
-    if: startsWith(github.ref_name, 'macos-v') || startsWith(github.ref_name, 'linux-v')
+  # Linux: GNOME Shell 拡張を検証し、gnome-extensions install 可能な拡張 zip と
+  #        インストーラ付きバンドル zip を添付
+  linux:
+    if: startsWith(github.ref_name, 'linux-v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: タグを解析
-        id: tag
-        run: |
-          os="${GITHUB_REF_NAME%%-v*}"
-          version="${GITHUB_REF_NAME#*-v}"
-          echo "os=$os" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: バージョン抽出 (linux-v0.1.0 → 0.1.0)
+        id: v
+        run: echo "version=${GITHUB_REF_NAME#linux-v}" >> "$GITHUB_OUTPUT"
 
-      - name: パッケージ作成
+      - name: 依存ツール
         run: |
-          os='${{ steps.tag.outputs.os }}'
-          version='${{ steps.tag.outputs.version }}'
-          test -d "$os" || { echo "::error::directory '$os' not found"; exit 1; }
-          mkdir -p dist/wincolor
-          cp -r "$os" shared README.md dist/wincolor/
-          (cd dist && zip -r "wincolor-$os-v$version.zip" wincolor)
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libglib2.0-bin zip
+
+      - name: バージョン整合性チェック (metadata.json / bin/wincolor がタグと一致)
+        run: |
+          version='${{ steps.v.outputs.version }}'
+          meta=$(jq -r '."version-name"' linux/gnome-extension/metadata.json)
+          cli=$(sed -n 's/^WINCOLOR_VERSION=//p' linux/bin/wincolor)
+          [ "$meta" = "$version" ] || { echo "::error::metadata.json version-name=$meta != tag $version"; exit 1; }
+          [ "$cli" = "$version" ]  || { echo "::error::bin/wincolor WINCOLOR_VERSION=$cli != tag $version"; exit 1; }
+
+      - name: 検証 (JSON / bash 構文 / ESM 構文 / gschema コンパイル)
+        run: |
+          jq -e '.uuid and ."shell-version"' linux/gnome-extension/metadata.json
+          bash -n linux/bin/wincolor
+          bash -n linux/install.sh
+          cp linux/gnome-extension/extension.js "$RUNNER_TEMP/extension.mjs"
+          node --check "$RUNNER_TEMP/extension.mjs"
+          glib-compile-schemas --strict --dry-run linux/gnome-extension/schemas/
+
+      - name: 拡張 zip を作成 (gnome-extensions install 用)
+        run: |
+          version='${{ steps.v.outputs.version }}'
+          uuid=$(jq -r .uuid linux/gnome-extension/metadata.json)
+          mkdir -p build dist
+          cp -r linux/gnome-extension "build/$uuid"
+          glib-compile-schemas "build/$uuid/schemas/"
+          (cd "build/$uuid" && zip -r "../../dist/wincolor-linux-v$version-extension.zip" .)
+          unzip -l "dist/wincolor-linux-v$version-extension.zip"
+
+      - name: バンドル zip を作成 (install.sh + 拡張 + CLI + shared + README)
+        run: |
+          version='${{ steps.v.outputs.version }}'
+          mkdir -p pkg/wincolor
+          cp -r linux/. pkg/wincolor/
+          cp -r shared pkg/wincolor/
+          cp README.md pkg/wincolor/README-project.md
+          (cd pkg && zip -r "../dist/wincolor-linux-v$version.zip" wincolor)
+
+      - name: インストーラのスモークテスト (一時 HOME)
+        run: |
+          version='${{ steps.v.outputs.version }}'
+          export HOME="$RUNNER_TEMP/home"; mkdir -p "$HOME"
+          NO_ENABLE=1 bash pkg/wincolor/install.sh
+          test -f "$HOME/.local/share/gnome-shell/extensions/window-color-tag@smart2j.jp/schemas/gschemas.compiled"
+          test -x "$HOME/.local/bin/wincolor"
+          "$HOME/.local/bin/wincolor" --version | grep -qx "wincolor (linux) v$version"
+          bash pkg/wincolor/install.sh --uninstall
 
       - name: Release 作成
         uses: softprops/action-gh-release@v2
         with:
-          name: wincolor ${{ steps.tag.outputs.os }} v${{ steps.tag.outputs.version }}
+          name: wincolor linux v${{ steps.v.outputs.version }}
+          files: dist/wincolor-linux-*.zip
+          generate_release_notes: true
+          body: |
+            ## インストール (GNOME Shell 50)
+            ```sh
+            unzip wincolor-linux-v${{ steps.v.outputs.version }}.zip && cd wincolor && ./install.sh
+            ```
+            拡張のみ入れる場合: `gnome-extensions install wincolor-linux-v${{ steps.v.outputs.version }}-extension.zip`
+            (CLI `bin/wincolor` は別途 PATH に配置)。いずれも GNOME Shell の再起動が必要。
+            対応環境は README の「対応環境 (Linux 版)」を参照。
+
+  # macOS: 実装が入るまではソース zip のみ
+  macos:
+    if: startsWith(github.ref_name, 'macos-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: バージョン抽出 (macos-v0.1.0 → 0.1.0)
+        id: v
+        run: echo "version=${GITHUB_REF_NAME#macos-v}" >> "$GITHUB_OUTPUT"
+
+      - name: パッケージ作成
+        run: |
+          version='${{ steps.v.outputs.version }}'
+          test -d macos || { echo "::error::directory 'macos' not found"; exit 1; }
+          mkdir -p dist/wincolor
+          cp -r macos shared README.md dist/wincolor/
+          (cd dist && zip -r "wincolor-macos-v$version.zip" wincolor)
+
+      - name: Release 作成
+        uses: softprops/action-gh-release@v2
+        with:
+          name: wincolor macos v${{ steps.v.outputs.version }}
           files: dist/wincolor-*.zip
           generate_release_notes: true

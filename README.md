@@ -50,11 +50,17 @@ GNOME Shell のバージョンで決まる**。GNOME Shell 50 が入っていれ
 ## リリース
 
 バージョンは OS ごとに独立して管理する。OS プレフィックス付きタグ
-(`windows-v1.0.0` など)を push すると、GitHub Actions が該当 OS の
-zip を添付した Release を自動作成する。
+(`windows-v1.0.0` / `linux-v0.1.0` など)を push すると、GitHub Actions が該当 OS の
+成果物を添付した Release を自動作成する。
+
+| OS | 添付物 |
+|---|---|
+| Windows | MSI インストーラ、ポータブル zip (exe + colors.json + ソース) |
+| Linux | `wincolor-linux-vX.Y.Z.zip` (install.sh + 拡張 + CLI + shared)、`wincolor-linux-vX.Y.Z-extension.zip` (`gnome-extensions install` 用) |
+| macOS | ソース zip (実装待ち) |
 
 ```sh
-git tag windows-v1.0.0
+git tag linux-v0.1.0
 git push origin main --tags
 ```
 

@@ -2,7 +2,10 @@
   "uuid": "window-color-tag@smart2j.jp",
   "name": "Window Color Tag",
   "description": "Tag individual windows with a colored border and titlebar tint. Controlled via D-Bus (wincolor command).",
-  "shell-version": ["50"],
+  "shell-version": [
+    "50"
+  ],
+  "version-name": "0.1.0",
   "settings-schema": "org.gnome.shell.extensions.window-color-tag",
   "url": ""
 }

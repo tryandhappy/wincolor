@@ -9,11 +9,14 @@
 #   wincolor focused next|prev    パレットを順送り/逆送り (末尾の次は色なし)
 #   wincolor focused off
 #   wincolor clear-all            全部消す
+#   wincolor --version            バージョン表示
 #
 # キーバインド (拡張が mutter に登録、Wayland ネイティブ窓でも効く):
 #   Super+C  フォーカス中ウィンドウのウィンドウメニューを開く (CSD 窓向け)
 #   Super+X  色タグを順送り
 set -eu
+
+WINCOLOR_VERSION=0.1.0
 
 DEST=org.gnome.Shell
 PATH_=/jp/smart2j/WindowColorTag
@@ -33,6 +36,7 @@ call() {
 case "${1:-}" in
     list)      call List ;;
     clear-all) call ClearAll ;;
+    --version) echo "wincolor (linux) v$WINCOLOR_VERSION" ;;
     ""|-h|--help)
         grep '^#' "$0" | sed 's/^# \{0,1\}//' | tail -n +2 ;;
     *)
