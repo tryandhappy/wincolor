@@ -1,0 +1,46 @@
+#!/bin/bash
+# wincolor - ウィンドウ単位で枠＋タイトルバーの色タグを付ける
+#
+# 使い方:
+#   wincolor list                 ウィンドウ一覧 (ID / クラス / 現在の色 / タイトル)
+#   wincolor <ID> <色>            指定ウィンドウに色を付ける (red, blue, #ff8800 など)
+#   wincolor <ID> off             指定ウィンドウの色を消す
+#   wincolor focused <色>         フォーカス中のウィンドウに色 (キーバインド向け)
+#   wincolor focused next|prev    パレットを順送り/逆送り (末尾の次は色なし)
+#   wincolor focused off
+#   wincolor clear-all            全部消す
+#
+# キーバインド (拡張が mutter に登録、Wayland ネイティブ窓でも効く):
+#   Super+C  フォーカス中ウィンドウのウィンドウメニューを開く (CSD 窓向け)
+#   Super+X  色タグを順送り
+set -eu
+
+DEST=org.gnome.Shell
+PATH_=/jp/smart2j/WindowColorTag
+IFACE=jp.smart2j.WindowColorTag
+
+call() {
+    local method=$1; shift
+    local out
+    out=$(gdbus call --session --dest "$DEST" --object-path "$PATH_" \
+        --method "$IFACE.$method" "$@")
+    # gdbus は ('...',) 形式で返すので中身だけ取り出す
+    out=${out#\(\'}
+    out=${out%\',\)}
+    printf '%b\n' "$out"
+}
+
+case "${1:-}" in
+    list)      call List ;;
+    clear-all) call ClearAll ;;
+    ""|-h|--help)
+        grep '^#' "$0" | sed 's/^# \{0,1\}//' | tail -n +2 ;;
+    *)
+        target=$1
+        color=${2:?色を指定してください (例: wincolor $target red / off)}
+        if [ "$color" = off ]; then
+            call Clear "$target"
+        else
+            call Set "$target" "$color"
+        fi ;;
+esac

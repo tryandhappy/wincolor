@@ -54,9 +54,18 @@
 - Accessibility 権限が必要
 
 ### Linux (linux/)
-- X11: オーバーレイ枠(xborders 方式)または WM 連携
-- Wayland: コンポジタ依存。GNOME は拡張、KDE はウィンドウルールを検討
-- v1 は X11 のみ対象
+- Wayland ネイティブウィンドウは外部プロセスから直接装飾できないため、
+  **GNOME Shell 拡張**(`window-color-tag@smart2j.jp`)として実装し、mutter 内部の
+  `window_group` に枠(St.Widget + CSS border)とタイトルバー相当の色タイントを重ね、
+  `position-changed` / `size-changed` に追従させる方式で実装済み(GNOME 限定)
+- 拡張は D-Bus (`jp.smart2j.WindowColorTag`) で `Set` / `Clear` / `ClearAll` / `List` を公開し、
+  CLI ラッパー `wincolor`(bash + `gdbus`)から操作する
+- CSD(クライアント側装飾)アプリはタイトルバー右クリックが効かないため、
+  mutter キーバインド(既定 `Super+C` でメニュー表示、`Super+X` で色を順送り)で代替
+- 現状は色パレットが拡張内にハードコードされており `shared/colors.json` と未連携。
+  自動ルール (rules.json) / ランチャーモード (run) も未実装
+- KDE 等 GNOME 以外のコンポジタ、および X11 専用の代替実装は未着手
+- 詳細は `linux/README.md` を参照
 
 ## 色プリセット
 
