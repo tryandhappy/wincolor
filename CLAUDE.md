@@ -15,10 +15,18 @@
   `windows-v1.0.0` / `macos-v0.1.0` / `linux-v0.1.0`
 - タグを push すると GitHub Actions (.github/workflows/release.yml) が Release を自動作成する。
   Windows は Ahk2Exe で単体 exe にコンパイルし **MSI (WiX) とポータブル zip** を添付、
-  macOS/Linux は実装が入るまでソース zip のみ
-- リリース手順(例: Windows 版):
+  Linux は拡張 zip(`gnome-extensions install` 用)と **install.sh 付きバンドル zip** を添付、
+  macOS は実装が入るまでソース zip のみ
+- リリース手順(Windows 版):
   1. `windows/wincolor.ahk` の `WINCOLOR_VERSION` を更新してコミット
   2. `git tag windows-vX.Y.Z && git push origin main --tags`(push は指示があったときのみ)
+- リリース手順(Linux 版):
+  1. `linux/gnome-extension/metadata.json` の `version-name` と `linux/bin/wincolor` の
+     `WINCOLOR_VERSION` を **両方** 更新してコミット(ワークフローがタグと一致するか検査し、
+     不一致なら失敗する)
+  2. `git tag linux-vX.Y.Z && git push origin main --tags`(push は指示があったときのみ)
+  - ワークフローは jq / bash -n / node --check / glib-compile-schemas --strict で検証し、
+    一時 HOME で install.sh のスモークテストまで行う
 - MSI の注意:
   - バージョンは数値3組 (X.Y.Z) のみ。`-rc1` 等のサフィックスは MSI では使えない
   - WiX は **5.0.2 に固定**(v6 以降は OSMF 同意が必要になったため)
@@ -30,7 +38,8 @@
 ## 構成
 
 - `windows/` — AutoHotkey v2 実装(現在の主開発対象)
-- `macos/` / `linux/` — 未着手(オーバーレイ枠方式の予定)
+- `linux/` — GNOME Shell 拡張 + D-Bus CLI(`install.sh` で配置。詳細は linux/README.md)
+- `macos/` — 未着手(オーバーレイ枠方式の予定)
 - `shared/colors.json` — 全OS共通の色プリセット
 - `docs/spec.md` — OS共通仕様と、OSごとの制約・実測結果
 

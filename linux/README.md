@@ -30,7 +30,24 @@ CSD(クライアント側装飾)アプリはタイトルバー右クリックが
 - `gdbus`(通常 `glib2` 系パッケージに含まれる)
 - KDE / Xfce など GNOME Shell 以外のデスクトップは非対応
 
-## インストール(開発時 / ソースから)
+## インストール(リリース zip から)
+
+[Releases](../../../releases) の `wincolor-linux-vX.Y.Z.zip` を展開して `install.sh` を実行する。
+拡張の配置・gschema コンパイル・CLI の `~/.local/bin` 配置・拡張の有効化までを行う。
+
+```sh
+unzip wincolor-linux-vX.Y.Z.zip && cd wincolor
+./install.sh                # PREFIX=/path で CLI の配置先変更可
+# GNOME Shell を再起動 (X11: Alt+F2 -> r / Wayland: ログアウト -> ログイン)
+./install.sh --uninstall    # アンインストール
+```
+
+拡張だけ入れる場合は `wincolor-linux-vX.Y.Z-extension.zip` を
+`gnome-extensions install <zip>` で導入し、`bin/wincolor` を手動で PATH に置く。
+
+ソースツリーの `linux/install.sh` を直接実行しても同じ結果になる。
+
+## インストール(手動 / ソースから)
 
 ```sh
 # 1. 拡張機能を配置
@@ -76,4 +93,13 @@ wincolor clear-all            # 全部消す
   `shared/colors.json` とは未連携(Windows版はここを参照して色を読み込んでいる)。
 - KDE / Wayland 他コンポジタは未対応(`docs/spec.md` の想定どおり GNOME 拡張前提)。
 - gschema のコンパイル済みバイナリ (`schemas/gschemas.compiled`) はリポジトリに含めていない。
-  インストール手順の `glib-compile-schemas` で生成すること。
+  `install.sh` またはインストール手順の `glib-compile-schemas` で生成すること
+  (リリースの拡張 zip には同梱済み)。
+
+## リリース
+
+1. `gnome-extension/metadata.json` の `version-name` と `bin/wincolor` の `WINCOLOR_VERSION` を更新
+2. `git tag linux-vX.Y.Z && git push origin main --tags`
+
+GitHub Actions が検証(構文チェック・gschema コンパイル・install.sh のスモークテスト)を行い、
+上記 2 種類の zip を添付した Release を作成する。バージョンがタグと一致しないと失敗する。
