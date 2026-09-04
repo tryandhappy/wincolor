@@ -14,7 +14,7 @@ wincolor/
 │   └── colors.json    # 色プリセット定義(全OS共通)
 ├── windows/           # Windows 実装 (AutoHotkey v2 / PowerShell)
 ├── macos/             # macOS 実装 (Swift / Hammerspoon)
-└── linux/             # Linux 実装 (X11: wmctrl 等 / Wayland は要検討)
+└── linux/             # Linux 実装 (GNOME Shell 拡張 + D-Bus CLI)
 ```
 
 - OS 間でコードは共有せず、**仕様(docs/spec.md)と色定義(shared/colors.json)だけを共有**する。
@@ -26,7 +26,7 @@ wincolor/
 |---|---|---|
 | Windows | DWM API (`DwmSetWindowAttribute`) | 枠・タイトルバー背景・タイトル文字色 |
 | macOS | オーバーレイ枠(公開APIでは他アプリのタイトルバー色変更不可) | ウィンドウ周囲の色枠 |
-| Linux | WM 依存(X11 は装飾 or オーバーレイ枠、Wayland は制約大) | ウィンドウ周囲の色枠 |
+| Linux | GNOME Shell 拡張(mutter の `window_group` にオーバーレイ枠+タイトルタイントを重畳、D-Bus 経由で CLI から操作) | 枠・タイトルバー相当の色タイント |
 
 ## リリース
 
@@ -43,4 +43,4 @@ git push origin main --tags
 
 - [x] Windows 版 v1.0.0(AutoHotkey v2 / DWM + オーバーレイ枠)
 - [ ] macOS 版
-- [ ] Linux 版
+- [x] Linux 版(GNOME Shell 拡張、詳細は linux/README.md)

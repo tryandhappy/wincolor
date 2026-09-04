@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.window-color-tag"
+          path="/org/gnome/shell/extensions/window-color-tag/">
+    <key name="open-window-menu" type="as">
+      <default><![CDATA[['<Super>c']]]></default>
+      <summary>Open the window menu for the focused window</summary>
+      <description>Opens the shell window menu (with color swatches) even for CSD windows like Chrome that have no server-side titlebar.</description>
+    </key>
+    <key name="cycle-color" type="as">
+      <default><![CDATA[['<Super>x']]]></default>
+      <summary>Cycle the color tag on the focused window</summary>
+      <description>Steps through the palette on the focused window; after the last color the tag is cleared.</description>
+    </key>
+  </schema>
+</schemalist>
