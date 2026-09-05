@@ -77,8 +77,8 @@ jobs:
             dist/*.zip
           generate_release_notes: true
 
-  # Linux: GNOME Shell 拡張を検証し、gnome-extensions install 可能な拡張 zip と
-  #        インストーラ付きバンドル zip を添付
+  # Linux: GNOME Shell 拡張を検証し、gnome-extensions install 可能な拡張 zip
+  #        (shared/colors.json 同梱) とインストーラ付きバンドル zip を添付
   linux:
     if: startsWith(github.ref_name, 'linux-v')
     runs-on: ubuntu-latest
@@ -105,6 +105,7 @@ jobs:
       - name: 検証 (JSON / bash 構文 / ESM 構文 / gschema コンパイル)
         run: |
           jq -e '.uuid and ."shell-version"' linux/gnome-extension/metadata.json
+          jq -e '.presets | length > 0 and all(.name and (.hex | test("^#[0-9A-Fa-f]{6}$")))' shared/colors.json
           bash -n linux/bin/wincolor
           bash -n linux/install.sh
           cp linux/gnome-extension/extension.js "$RUNNER_TEMP/extension.mjs"
@@ -117,6 +118,7 @@ jobs:
           uuid=$(jq -r .uuid linux/gnome-extension/metadata.json)
           mkdir -p build dist
           cp -r linux/gnome-extension "build/$uuid"
+          cp shared/colors.json "build/$uuid/"
           glib-compile-schemas "build/$uuid/schemas/"
           (cd "build/$uuid" && zip -r "../../dist/wincolor-linux-v$version-extension.zip" .)
           unzip -l "dist/wincolor-linux-v$version-extension.zip"
@@ -136,6 +138,7 @@ jobs:
           export HOME="$RUNNER_TEMP/home"; mkdir -p "$HOME"
           NO_ENABLE=1 bash pkg/wincolor/install.sh
           test -f "$HOME/.local/share/gnome-shell/extensions/window-color-tag@smart2j.jp/schemas/gschemas.compiled"
+          cmp shared/colors.json "$HOME/.local/share/gnome-shell/extensions/window-color-tag@smart2j.jp/colors.json"
           test -x "$HOME/.local/bin/wincolor"
           "$HOME/.local/bin/wincolor" --version | grep -qx "wincolor (linux) v$version"
           bash pkg/wincolor/install.sh --uninstall

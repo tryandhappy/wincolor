@@ -3,7 +3,8 @@
 #
 # 使い方:
 #   wincolor list                 ウィンドウ一覧 (ID / クラス / 現在の色 / タイトル)
-#   wincolor <ID> <色>            指定ウィンドウに色を付ける (red, blue, #ff8800 など)
+#   wincolor colors               使える色プリセット一覧 (shared/colors.json 由来。名前 / ラベル / HEX)
+#   wincolor <ID> <色>            指定ウィンドウに色を付ける (プリセット名 red, 青 など、または #RRGGBB)
 #   wincolor <ID> off             指定ウィンドウの色を消す
 #   wincolor focused <色>         フォーカス中のウィンドウに色 (キーバインド向け)
 #   wincolor focused next|prev    パレットを順送り/逆送り (末尾の次は色なし)
@@ -35,6 +36,7 @@ call() {
 
 case "${1:-}" in
     list)      call List ;;
+    colors)    call Palette ;;
     clear-all) call ClearAll ;;
     --version) echo "wincolor (linux) v$WINCOLOR_VERSION" ;;
     ""|-h|--help)

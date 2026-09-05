@@ -8,6 +8,8 @@ GNOME Shell 拡張機能 + CLI ラッパー。
 - `gnome-extension/` — GNOME Shell 拡張本体 (`window-color-tag@smart2j.jp`)。
   D-Bus (`jp.smart2j.WindowColorTag`) でウィンドウの色付けを公開する。
 - `bin/wincolor` — 上記 D-Bus を叩く CLI ラッパー(bash + `gdbus`)。
+- 色プリセットはリポジトリ共通の `shared/colors.json` を使う(`install.sh` が拡張ディレクトリに
+  コピーする。リポジトリから直接読み込ませる場合は `../../shared/colors.json` も探索する)。
 
 ## 方式
 
@@ -54,7 +56,8 @@ unzip wincolor-linux-vX.Y.Z.zip && cd wincolor
 mkdir -p ~/.local/share/gnome-shell/extensions/window-color-tag@smart2j.jp
 cp -r linux/gnome-extension/* ~/.local/share/gnome-shell/extensions/window-color-tag@smart2j.jp/
 
-# 2. gschema をコンパイル
+# 2. 色プリセットを同梱し、gschema をコンパイル
+cp shared/colors.json ~/.local/share/gnome-shell/extensions/window-color-tag@smart2j.jp/
 glib-compile-schemas ~/.local/share/gnome-shell/extensions/window-color-tag@smart2j.jp/schemas/
 
 # 3. 拡張を有効化
@@ -71,7 +74,8 @@ chmod +x ~/.local/bin/wincolor
 
 ```sh
 wincolor list                 # ウィンドウ一覧 (ID / クラス / 現在の色 / タイトル)
-wincolor <ID> <色>            # 指定ウィンドウに色を付ける (red, blue, #ff8800 など)
+wincolor colors               # 使える色プリセット一覧 (名前 / ラベル / HEX)
+wincolor <ID> <色>            # 指定ウィンドウに色を付ける (プリセット名 red, 青 など、または #RRGGBB)
 wincolor <ID> off             # 指定ウィンドウの色を消す
 wincolor focused <色>         # フォーカス中のウィンドウに色 (キーバインド向け)
 wincolor focused next|prev    # パレットを順送り/逆送り (末尾の次は色なし)
@@ -89,8 +93,9 @@ wincolor clear-all            # 全部消す
 
 ## 既知の制約 / 未対応
 
-- パレットは `gnome-extension/extension.js` 内の `PALETTE` 定数にハードコードされており、
-  `shared/colors.json` とは未連携(Windows版はここを参照して色を読み込んでいる)。
+- 色は `shared/colors.json` のプリセット(名前・ラベル)か `#RRGGBB` のみ受け付ける。
+  CSS 色名(`tomato` 等)は使えない。`#RRGGBB` がプリセットと一致すればその名前で表示される。
+- ウィンドウメニューの色スウォッチは 8 個ずつ折り返して表示する(22 色 + 消すボタン)。
 - KDE / Wayland 他コンポジタは未対応(`docs/spec.md` の想定どおり GNOME 拡張前提)。
 - gschema のコンパイル済みバイナリ (`schemas/gschemas.compiled`) はリポジトリに含めていない。
   `install.sh` またはインストール手順の `glib-compile-schemas` で生成すること
