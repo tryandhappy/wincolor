@@ -7,7 +7,7 @@
 #
 # 環境変数:
 #   PREFIX   CLI の配置先 (既定: ~/.local/bin)
-#   NO_ENABLE=1  gnome-extensions enable を実行しない (CI 等)
+#   NO_ENABLE=1  gnome-extensions enable / disable を実行しない (CI や一時 HOME でのテスト用)
 #
 # 自動ルールの雛形を ~/.config/wincolor/rules.json に置く (既にあれば触らない)。
 # --uninstall でもユーザー設定 (~/.config/wincolor) は残す。
@@ -21,7 +21,11 @@ BIN_DST="${PREFIX:-$HOME/.local/bin}"
 CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/wincolor"
 
 if [ "${1:-}" = --uninstall ]; then
-    command -v gnome-extensions >/dev/null && gnome-extensions disable "$UUID" 2>/dev/null || true
+    # NO_ENABLE=1 のときは実セッションの拡張を触らない (CI や一時 HOME でのテスト用。
+    # gnome-extensions は HOME に関係なくログイン中のセッションに対して働くため)
+    if [ -z "${NO_ENABLE:-}" ] && command -v gnome-extensions >/dev/null; then
+        gnome-extensions disable "$UUID" 2>/dev/null || true
+    fi
     rm -rf "$EXT_DST"
     rm -f "$BIN_DST/wincolor"
     echo "removed: $EXT_DST, $BIN_DST/wincolor"
