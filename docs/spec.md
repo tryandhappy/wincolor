@@ -21,10 +21,10 @@
    - タイトルバー文字色
 5. 設定はウィンドウ生存中のみ有効
 6. 自動ルール (rules.json): タイトル/実行ファイル名の正規表現に一致する新規ウィンドウへ自動着色
-   (Windows / Linux 版で実装済み。手動操作したウィンドウには適用しない)
+   (全 OS で実装済み。手動操作したウィンドウには適用しない)
 7. ランチャーモード: `run <色> <コマンド>` 引数でアプリを起動し、そのウィンドウに着色
-   (Windows / Linux 版で実装済み。Windows は常駐インスタンスへ WM_COPYDATA、
-   Linux は拡張へ D-Bus `TagPid` で依頼)
+   (全 OS で実装済み。Windows は常駐インスタンスへ WM_COPYDATA、Linux は拡張へ D-Bus `TagPid`、
+   macOS は常駐へ CFMessagePort `tagpid` で依頼)
 
 ## OS別の制約
 
@@ -51,8 +51,19 @@
 
 ### macOS (macos/)
 - 他アプリのタイトルバー色を変える公開 API はない
-- 代替: ウィンドウに追従する色付きオーバーレイ枠を描画(Hammerspoon hs.canvas 等)
-- Accessibility 権限が必要
+- **Swift のメニューバー常駐アプリ + CLI** として実装(単一バイナリ `wincolor`。引数なしで常駐、
+  引数付きで CLI。常駐 ⇄ CLI は `CFMessagePort` `jp.smart2j.wincolor`)
+- 対象窓に追従する**クリック透過のオーバーレイ窓**(枠 3pt・角丸 11pt、上端 28pt に半透明の色帯)を
+  `CGWindowListCopyWindowInfo` の 50ms ポーリングで追従させ、`NSWindow.order(.above, relativeTo:)` で
+  対象の直上に置く。画面上に無い窓(最小化・別 Space)ではオーバーレイを隠す
+- トリガー: タイトルバー領域の **Ctrl+右クリック**(`CGEventTap` で横取りして色メニュー。Windows 版と同じ)、
+  メニューバーのアイコンからウィンドウ一覧、CLI
+- タイトルは Accessibility API(`AXUIElement` + `_AXUIElementGetWindow`)で取る。**Accessibility 権限が必要**
+  (画面収録は不要)。無い場合はタイトル空・Ctrl+右クリック不可だが、メニューバーと CLI(ID 指定)は動く
+- 自動ルール(rules.json)は共通形式。`exe` は実行ファイル名・アプリ名・バンドル ID に照合。
+  ランチャー(`run`)は Linux 版と同じ PID/子孫/フォールバック判定(常駐に `tagpid` で依頼し、CLI が結果をポーリング)
+- 設定ファイルの探索順: `~/.config/wincolor/` → `~/.local/share/wincolor/` → 実行ファイルのディレクトリ → リポジトリの `shared/`
+- 初版は実機未確認(手元に macOS が無いため、CI の macOS ランナーでコンパイルと CLI 起動のみ検証)
 
 ### Linux (linux/)
 - Wayland ネイティブウィンドウは外部プロセスから直接装飾できないため、

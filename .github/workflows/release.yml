@@ -165,10 +165,10 @@ jobs:
             (CLI `bin/wincolor` は別途 PATH に配置)。いずれも GNOME Shell の再起動が必要。
             対応環境は README の「対応環境 (Linux 版)」を参照。
 
-  # macOS: 実装が入るまではソース zip のみ
+  # macOS: SwiftPM でビルドし、バイナリ + install.sh + shared を zip で添付
   macos:
     if: startsWith(github.ref_name, 'macos-v')
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -176,17 +176,50 @@ jobs:
         id: v
         run: echo "version=${GITHUB_REF_NAME#macos-v}" >> "$GITHUB_OUTPUT"
 
-      - name: パッケージ作成
+      - name: バージョン整合性チェック (Version.swift がタグと一致)
         run: |
           version='${{ steps.v.outputs.version }}'
-          test -d macos || { echo "::error::directory 'macos' not found"; exit 1; }
-          mkdir -p dist/wincolor
-          cp -r macos shared README.md dist/wincolor/
-          (cd dist && zip -r "wincolor-macos-v$version.zip" wincolor)
+          src=$(sed -n 's/^let WINCOLOR_VERSION = "\(.*\)"$/\1/p' macos/Sources/wincolor/Version.swift)
+          [ "$src" = "$version" ] || { echo "::error::Version.swift WINCOLOR_VERSION=$src != tag $version"; exit 1; }
+
+      - name: ビルド (swift build -c release)
+        run: |
+          swift --version
+          swift build -c release --package-path macos
+          macos/.build/release/wincolor --version | grep -qx "wincolor (macos) v${{ steps.v.outputs.version }}"
+
+      - name: パッケージ作成 (wincolor + install.sh + shared + README)
+        run: |
+          version='${{ steps.v.outputs.version }}'
+          mkdir -p pkg/wincolor dist
+          cp macos/.build/release/wincolor macos/install.sh macos/README.md pkg/wincolor/
+          cp -r shared pkg/wincolor/
+          cp README.md pkg/wincolor/README-project.md
+          (cd pkg && zip -r "../dist/wincolor-macos-v$version.zip" wincolor)
+
+      - name: インストーラのスモークテスト (一時 HOME、LaunchAgent 登録なし)
+        run: |
+          version='${{ steps.v.outputs.version }}'
+          export HOME="$RUNNER_TEMP/home"; mkdir -p "$HOME"
+          NO_AGENT=1 bash pkg/wincolor/install.sh
+          test -x "$HOME/.local/bin/wincolor"
+          cmp shared/colors.json "$HOME/.local/share/wincolor/colors.json"
+          cmp shared/rules.json "$HOME/.config/wincolor/rules.json"
+          "$HOME/.local/bin/wincolor" --version | grep -qx "wincolor (macos) v$version"
+          "$HOME/.local/bin/wincolor" --help | head -1
+          NO_AGENT=1 bash pkg/wincolor/install.sh --uninstall
+          test -f "$HOME/.config/wincolor/rules.json"
 
       - name: Release 作成
         uses: softprops/action-gh-release@v2
         with:
           name: wincolor macos v${{ steps.v.outputs.version }}
-          files: dist/wincolor-*.zip
+          files: dist/wincolor-macos-*.zip
           generate_release_notes: true
+          body: |
+            ## インストール (macOS 13 以降)
+            ```sh
+            unzip wincolor-macos-v${{ steps.v.outputs.version }}.zip && cd wincolor && ./install.sh
+            ```
+            初回はシステム設定 → プライバシーとセキュリティ → アクセシビリティ で wincolor を許可してください。
+            署名・公証はしていません。詳細は同梱の README.md を参照。

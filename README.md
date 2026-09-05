@@ -13,7 +13,7 @@ wincolor/
 ├── shared/
 │   └── colors.json    # 色プリセット定義(全OS共通)
 ├── windows/           # Windows 実装 (AutoHotkey v2 / PowerShell)
-├── macos/             # macOS 実装 (Swift / Hammerspoon)
+├── macos/             # macOS 実装 (Swift: メニューバー常駐 + CLI)
 └── linux/             # Linux 実装 (GNOME Shell 拡張 + D-Bus CLI)
 ```
 
@@ -58,7 +58,7 @@ GNOME Shell のバージョンで決まる**。GNOME Shell 50 / 51 が入って�
 |---|---|
 | Windows | MSI インストーラ、ポータブル zip (exe + colors.json + ソース) |
 | Linux | `wincolor-linux-vX.Y.Z.zip` (install.sh + 拡張 + CLI + shared)、`wincolor-linux-vX.Y.Z-extension.zip` (`gnome-extensions install` 用)。ワンライナー: `curl -fsSL https://raw.githubusercontent.com/tryandhappy/wincolor/main/linux/get.sh \| bash` |
-| macOS | ソース zip (実装待ち) |
+| macOS | `wincolor-macos-vX.Y.Z.zip` (バイナリ + install.sh + shared)。macos-latest ランナーで `swift build` |
 
 ```sh
 git tag linux-v0.1.0
@@ -68,5 +68,5 @@ git push origin main --tags
 ## ステータス
 
 - [x] Windows 版 v1.0.1(AutoHotkey v2 / DWM + オーバーレイ枠。MSI 配布、自動ルール、ランチャー)
-- [ ] macOS 版
+- [ ] macOS 版(Swift 実装を作成済み、CI ビルドのみ。実機での動作確認とリリースが未了。詳細は macos/README.md)
 - [x] Linux 版 v0.2.3(GNOME Shell 50 / 51 拡張 + D-Bus CLI。colors.json 連携、自動ルール、ランチャー、ワンライナーインストーラ。GNOME Shell 50.1 実機で確認済み。詳細は linux/README.md)
