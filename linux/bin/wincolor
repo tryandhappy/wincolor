@@ -27,7 +27,7 @@
 #   Super+X  色タグを順送り
 set -eu
 
-WINCOLOR_VERSION=0.2.1
+WINCOLOR_VERSION=0.2.2
 
 DEST=org.gnome.Shell
 PATH_=/jp/smart2j/WindowColorTag
