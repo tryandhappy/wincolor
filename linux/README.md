@@ -25,8 +25,8 @@ CSD(クライアント側装飾)アプリはタイトルバー右クリックが
 
 ## 要件
 
-- GNOME Shell 50(`shell-version` は現状 `50` のみ指定。動作確認したバージョンに合わせて
-  `metadata.json` の `shell-version` を調整すること)。
+- GNOME Shell 50 または 51(`metadata.json` の `shell-version` は `50` と `51`)。
+  50 は実機確認済み、51 は 51.rc のソースで依存 API の不変を確認したのみ(実機未確認)。
   GNOME 45〜49 は未確認、44 以前は ESM 非対応のため不可。
   対応ディストリビューションの一覧はリポジトリ直下の README.md「対応環境 (Linux 版)」を参照
 - `gdbus`(通常 `glib2` 系パッケージに含まれる)
