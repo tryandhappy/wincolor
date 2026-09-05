@@ -81,6 +81,7 @@ wincolor focused <色>         # フォーカス中のウィンドウに色 (キ
 wincolor focused next|prev    # パレットを順送り/逆送り (末尾の次は色なし)
 wincolor focused off
 wincolor clear-all            # 全部消す
+wincolor run <色> <コマンド...>  # コマンドを起動し、そのウィンドウに色を付ける (ランチャー)
 wincolor rules                # 読み込み済みの自動ルール一覧
 wincolor reload               # colors.json / rules.json を再読み込み
 ```
@@ -118,6 +119,32 @@ wincolor reload               # colors.json / rules.json を再読み込み
   読み込み元と件数は `wincolor rules` で確認できる。不正な正規表現や未知の色のルールは
   スキップされ、`journalctl --user -f -o cat /usr/bin/gnome-shell` に警告が出る
 - 探索順は `~/.config/wincolor/rules.json` → 拡張ディレクトリ → リポジトリの `shared/rules.json`
+
+## ショートカットから色付きで起動(ランチャー)
+
+```sh
+wincolor run red ssh-terminal user@prod-server
+wincolor run 青 firefox --new-window https://staging.example.com
+```
+
+コマンドをバックグラウンドで起動し、そのウィンドウが現れたら色を付けて終了する
+(結果は標準出力に出る)。`.desktop` ファイルに書けばアプリ一覧やドックからも使える:
+
+```ini
+[Desktop Entry]
+Type=Application
+Name=Firefox (本番)
+Exec=wincolor run red firefox --new-window https://prod.example.com
+Icon=firefox
+```
+
+- 対象ウィンドウの判定は「起動したプロセスの PID と一致」または「その子孫プロセス」
+  (Flatpak / Snap / ラッパースクリプト経由でも追える)
+- PID を引き継がないアプリ(gnome-terminal のように既存サーバに窓を作らせるもの、
+  既に起動中の Chrome / Firefox など)は、起動後に現れた最初の新規ウィンドウに付ける
+  (一致する窓を 1.5 秒待ってから)。同時に別のウィンドウが開くと取り違えることがある
+- 既定 10 秒待って窓が出なければ諦める(`WINCOLOR_RUN_TIMEOUT=30 wincolor run ...` で変更)
+- ランチャーで付けた色は手動操作扱いとなり、自動ルールで上書きされない
 
 ## 既知の制約 / 未対応
 
