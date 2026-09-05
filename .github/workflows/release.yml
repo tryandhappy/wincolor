@@ -136,7 +136,9 @@ jobs:
       - name: インストーラのスモークテスト (一時 HOME)
         run: |
           version='${{ steps.v.outputs.version }}'
+          # ランナーは XDG_CONFIG_HOME=/home/runner/.config を設定しているので、一時 HOME 側へ向ける
           export HOME="$RUNNER_TEMP/home"; mkdir -p "$HOME"
+          export XDG_CONFIG_HOME="$HOME/.config" XDG_DATA_HOME="$HOME/.local/share"
           NO_ENABLE=1 bash pkg/wincolor/install.sh
           test -f "$HOME/.local/share/gnome-shell/extensions/window-color-tag@smart2j.jp/schemas/gschemas.compiled"
           cmp shared/colors.json "$HOME/.local/share/gnome-shell/extensions/window-color-tag@smart2j.jp/colors.json"
