@@ -1,7 +1,7 @@
 {
   "rules": [
   ],
-  "_how_to": "rules にオブジェクトを追加すると、条件に合う新しいウィンドウへ自動で色が付く。title はウィンドウタイトル、exe は実行ファイル名の正規表現(大文字小文字無視)。どちらか片方だけでも可。color はプリセット名 (red / 赤 など) か #RRGGBB。上のルールが優先。変更はトレイの「再読み込み」で反映",
+  "_how_to": "rules にオブジェクトを追加すると、条件に合う新しいウィンドウへ自動で色が付く。title はウィンドウタイトル、exe は実行ファイル名の正規表現(大文字小文字無視。Linux では WM_CLASS / app-id にも一致すればよい)。どちらか片方だけでも可。color はプリセット名 (red / 赤 など) か #RRGGBB。上のルールが優先。手動で色を付けた・消したウィンドウには適用しない。変更の反映: Windows はトレイの「再読み込み」、Linux は保存時に自動 (または wincolor reload)。Linux での置き場所は ~/.config/wincolor/rules.json",
   "_examples": [
     { "title": "本番|prod", "color": "red" },
     { "exe": "KeePass", "color": "purple" },

@@ -10,7 +10,15 @@
 #   wincolor focused next|prev    パレットを順送り/逆送り (末尾の次は色なし)
 #   wincolor focused off
 #   wincolor clear-all            全部消す
+#   wincolor rules                読み込み済みの自動ルール一覧 (title / exe / color)
+#   wincolor reload               colors.json / rules.json を再読み込み (保存時にも自動で再読み込みされる)
 #   wincolor --version            バージョン表示
+#
+# 自動ルール: ~/.config/wincolor/rules.json (install.sh が雛形を置く) に
+#   { "rules": [ { "title": "本番|prod", "color": "red" }, { "exe": "keepass", "color": "purple" } ] }
+#   のように書くと、条件に合う新しいウィンドウへ自動で色が付く。title / exe は正規表現
+#   (大文字小文字無視)。exe はプロセス名と WM_CLASS (app-id) のどちらかに一致すればよい。
+#   手動で色を付けた・消したウィンドウには適用しない。
 #
 # キーバインド (拡張が mutter に登録、Wayland ネイティブ窓でも効く):
 #   Super+C  フォーカス中ウィンドウのウィンドウメニューを開く (CSD 窓向け)
@@ -37,6 +45,8 @@ call() {
 case "${1:-}" in
     list)      call List ;;
     colors)    call Palette ;;
+    rules)     call Rules ;;
+    reload)    call Reload ;;
     clear-all) call ClearAll ;;
     --version) echo "wincolor (linux) v$WINCOLOR_VERSION" ;;
     ""|-h|--help)

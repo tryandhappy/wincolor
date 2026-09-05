@@ -81,6 +81,8 @@ wincolor focused <色>         # フォーカス中のウィンドウに色 (キ
 wincolor focused next|prev    # パレットを順送り/逆送り (末尾の次は色なし)
 wincolor focused off
 wincolor clear-all            # 全部消す
+wincolor rules                # 読み込み済みの自動ルール一覧
+wincolor reload               # colors.json / rules.json を再読み込み
 ```
 
 キーバインド(拡張が mutter に登録、Wayland ネイティブ窓でも効く):
@@ -90,6 +92,32 @@ wincolor clear-all            # 全部消す
 
 タイトルバーが自前描画でないウィンドウは、タイトルバー右クリック(または Alt+Space)の
 ウィンドウメニューにも色スウォッチの行が追加される。
+
+## 自動ルール
+
+`~/.config/wincolor/rules.json`(`install.sh` が雛形を置く。形式は Windows 版と共通の
+`shared/rules.json`)にルールを書くと、条件に合う新しいウィンドウへ自動で色が付く:
+
+```json
+{
+  "rules": [
+    { "title": "本番|prod", "color": "red" },
+    { "exe": "keepass", "color": "purple" },
+    { "title": "ステージング", "exe": "chrome|firefox", "color": "orange" }
+  ]
+}
+```
+
+- `title` / `exe` は正規表現(大文字小文字無視)。片方だけでも可。両方書いた場合は両方一致で適用。上のルールが優先
+- `exe` はプロセス名(`/proc/<pid>/exe` の basename、読めなければ `comm`)と WM_CLASS
+  (Wayland の app-id。`wincolor list` の 2 列目)のどちらかに一致すればよい
+- `color` はプリセット名 / ラベル / `#RRGGBB`
+- 手動で色を付けた・消したウィンドウ、一度ルールで色が付いたウィンドウには再適用しない
+  (タイトルが変わっても色は変わらない)
+- ファイルを保存すると自動で再読み込みされる(`wincolor reload` で明示的にも可)。
+  読み込み元と件数は `wincolor rules` で確認できる。不正な正規表現や未知の色のルールは
+  スキップされ、`journalctl --user -f -o cat /usr/bin/gnome-shell` に警告が出る
+- 探索順は `~/.config/wincolor/rules.json` → 拡張ディレクトリ → リポジトリの `shared/rules.json`
 
 ## 既知の制約 / 未対応
 
