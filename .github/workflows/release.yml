@@ -145,7 +145,7 @@ jobs:
           cmp shared/rules.json "$HOME/.config/wincolor/rules.json"
           test -x "$HOME/.local/bin/wincolor"
           "$HOME/.local/bin/wincolor" --version | grep -qx "wincolor (linux) v$version"
-          bash pkg/wincolor/install.sh --uninstall
+          NO_ENABLE=1 bash pkg/wincolor/install.sh --uninstall
           test -f "$HOME/.config/wincolor/rules.json"   # ユーザー設定は残る
 
       - name: Release 作成
