@@ -16,7 +16,7 @@
 - タグを push すると GitHub Actions (.github/workflows/release.yml) が Release を自動作成する。
   Windows は Ahk2Exe で単体 exe にコンパイルし **MSI (WiX) とポータブル zip** を添付、
   Linux は拡張 zip(`gnome-extensions install` 用)と **install.sh 付きバンドル zip** を添付、
-  macOS は実装が入るまでソース zip のみ
+  macOS は macos-latest ランナーで `swift build -c release` し **バイナリ + install.sh + shared の zip** を添付
 - リリース手順(Windows 版):
   1. `windows/wincolor.ahk` の `WINCOLOR_VERSION` を更新してコミット
   2. `git tag windows-vX.Y.Z && git push origin main --tags`(push は指示があったときのみ)
@@ -27,6 +27,11 @@
   2. `git tag linux-vX.Y.Z && git push origin main --tags`(push は指示があったときのみ)
   - ワークフローは jq / bash -n / node --check / glib-compile-schemas --strict で検証し、
     一時 HOME で install.sh のスモークテストまで行う
+- リリース手順(macOS 版):
+  1. `macos/Sources/wincolor/Version.swift` の `WINCOLOR_VERSION` を更新してコミット(タグ不一致で失敗)
+  2. `git tag macos-vX.Y.Z && git push origin main --tags`(push は指示があったときのみ)
+  - 手元に Swift が無いため、コンパイル確認は `.github/workflows/macos-build.yml`(main への push で
+    macos/** が変わると走る)に頼る。push 前に構文を目で確認すること
 - MSI の注意:
   - バージョンは数値3組 (X.Y.Z) のみ。`-rc1` 等のサフィックスは MSI では使えない
   - WiX は **5.0.2 に固定**(v6 以降は OSMF 同意が必要になったため)
@@ -39,7 +44,7 @@
 
 - `windows/` — AutoHotkey v2 実装(現在の主開発対象)
 - `linux/` — GNOME Shell 拡張 + D-Bus CLI(`install.sh` で配置。詳細は linux/README.md)
-- `macos/` — 未着手(オーバーレイ枠方式の予定)
+- `macos/` — Swift のメニューバー常駐 + CLI(オーバーレイ枠方式、CFMessagePort で通信。詳細は macos/README.md)
 - `shared/colors.json` — 全OS共通の色プリセット
 - `docs/spec.md` — OS共通仕様と、OSごとの制約・実測結果
 

@@ -1,0 +1,35 @@
+name: macOS build
+
+# macos/ 配下の変更を macOS ランナーでコンパイル検証する (リリースはしない)
+on:
+  push:
+    branches: [main]
+    paths: ["macos/**", "shared/**", ".github/workflows/macos-build.yml"]
+  pull_request:
+    paths: ["macos/**", "shared/**", ".github/workflows/macos-build.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: swift build
+        run: |
+          swift --version
+          swift build -c release --package-path macos 2>&1 | tee build.log
+          grep -E "warning:" build.log | sort -u | head -50 || true
+      - name: 起動確認 (CLI モード。常駐は GUI セッションが無いので起動しない)
+        run: |
+          macos/.build/release/wincolor --version
+          macos/.build/release/wincolor --help | head -3
+          # 常駐がいない状態の CLI はエラー終了 (exit 2) するはず
+          if macos/.build/release/wincolor list; then echo "::error::list should fail without resident"; exit 1; fi
+      - name: install.sh スモークテスト
+        run: |
+          export HOME="$RUNNER_TEMP/home"; mkdir -p "$HOME"
+          bash -n macos/install.sh
+          mkdir -p pkg/wincolor && cp macos/.build/release/wincolor macos/install.sh pkg/wincolor/ && cp -r shared pkg/wincolor/
+          NO_AGENT=1 bash pkg/wincolor/install.sh
+          "$HOME/.local/bin/wincolor" --version
+          NO_AGENT=1 bash pkg/wincolor/install.sh --uninstall
