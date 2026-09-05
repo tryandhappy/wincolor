@@ -57,7 +57,7 @@ GNOME Shell のバージョンで決まる**。GNOME Shell 50 / 51 が入って�
 | OS | 添付物 |
 |---|---|
 | Windows | MSI インストーラ、ポータブル zip (exe + colors.json + ソース) |
-| Linux | `wincolor-linux-vX.Y.Z.zip` (install.sh + 拡張 + CLI + shared)、`wincolor-linux-vX.Y.Z-extension.zip` (`gnome-extensions install` 用) |
+| Linux | `wincolor-linux-vX.Y.Z.zip` (install.sh + 拡張 + CLI + shared)、`wincolor-linux-vX.Y.Z-extension.zip` (`gnome-extensions install` 用)。ワンライナー: `curl -fsSL https://raw.githubusercontent.com/tryandhappy/wincolor/main/linux/get.sh \| bash` |
 | macOS | ソース zip (実装待ち) |
 
 ```sh

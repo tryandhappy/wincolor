@@ -109,6 +109,7 @@ jobs:
           jq -e '.rules | type == "array"' shared/rules.json
           bash -n linux/bin/wincolor
           bash -n linux/install.sh
+          bash -n linux/get.sh
           cp linux/gnome-extension/extension.js "$RUNNER_TEMP/extension.mjs"
           node --check "$RUNNER_TEMP/extension.mjs"
           glib-compile-schemas --strict --dry-run linux/gnome-extension/schemas/
@@ -157,8 +158,9 @@ jobs:
           body: |
             ## インストール (GNOME Shell 50 / 51)
             ```sh
-            unzip wincolor-linux-v${{ steps.v.outputs.version }}.zip && cd wincolor && ./install.sh
+            curl -fsSL https://raw.githubusercontent.com/tryandhappy/wincolor/main/linux/get.sh | WINCOLOR_VERSION=${{ steps.v.outputs.version }} bash
             ```
+            または zip を手で展開: `unzip wincolor-linux-v${{ steps.v.outputs.version }}.zip && cd wincolor && ./install.sh`
             拡張のみ入れる場合: `gnome-extensions install wincolor-linux-v${{ steps.v.outputs.version }}-extension.zip`
             (CLI `bin/wincolor` は別途 PATH に配置)。いずれも GNOME Shell の再起動が必要。
             対応環境は README の「対応環境 (Linux 版)」を参照。

@@ -32,9 +32,31 @@ CSD(クライアント側装飾)アプリはタイトルバー右クリックが
 - `gdbus`(通常 `glib2` 系パッケージに含まれる)
 - KDE / Xfce など GNOME Shell 以外のデスクトップは非対応
 
+## インストール(ワンライナー)
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/tryandhappy/wincolor/main/linux/get.sh | bash
+```
+
+`get.sh` が GitHub Releases から最新の Linux 版バンドル zip を取得し、`install.sh` を実行する
+(拡張の配置・gschema コンパイル・CLI の `~/.local/bin` 配置・自動ルール雛形の配置・拡張の有効化)。
+終わったら GNOME Shell を再起動する(X11: Alt+F2 → r / Wayland: ログアウト → ログイン)。
+
+```sh
+# バージョンを指定
+curl -fsSL https://raw.githubusercontent.com/tryandhappy/wincolor/main/linux/get.sh | WINCOLOR_VERSION=0.2.2 bash
+# アンインストール (~/.config/wincolor は残る)
+curl -fsSL https://raw.githubusercontent.com/tryandhappy/wincolor/main/linux/get.sh | bash -s -- --uninstall
+# CLI の配置先を変更
+curl -fsSL https://raw.githubusercontent.com/tryandhappy/wincolor/main/linux/get.sh | PREFIX=/usr/local/bin bash
+```
+
+必要なもの: `curl`(または `wget`)、`unzip`、GNOME Shell 50 / 51。
+
 ## インストール(リリース zip から)
 
-[Releases](../../../releases) の `wincolor-linux-vX.Y.Z.zip` を展開して `install.sh` を実行する。
+[Releases](../../../releases) の `wincolor-linux-vX.Y.Z.zip` を展開して `install.sh` を実行する
+(上のワンライナーが内部で行っているのと同じ手順)。
 拡張の配置・gschema コンパイル・CLI の `~/.local/bin` 配置・拡張の有効化までを行う。
 
 ```sh
