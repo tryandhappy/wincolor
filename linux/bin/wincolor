@@ -69,7 +69,8 @@ case "${1:-}" in
     clear-all) call ClearAll ;;
     --version) echo "wincolor (linux) v$WINCOLOR_VERSION" ;;
     ""|-h|--help)
-        grep '^#' "$0" | sed 's/^# \{0,1\}//' | tail -n +2 ;;
+        # 先頭のコメントブロック (2 行目〜最初の非コメント行) だけを出す。本文中のコメントは含めない
+        sed -n '2,/^[^#]/{/^#/p}' "$0" | sed 's/^# \{0,1\}//' ;;
     *)
         target=$1
         color=${2:?色を指定してください (例: wincolor $target red / off)}
