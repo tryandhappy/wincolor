@@ -69,4 +69,4 @@ git push origin main --tags
 
 - [x] Windows 版 v1.0.0(AutoHotkey v2 / DWM + オーバーレイ枠)
 - [ ] macOS 版
-- [x] Linux 版(GNOME Shell 拡張、詳細は linux/README.md)
+- [x] Linux 版 v0.2.3(GNOME Shell 50 / 51 拡張 + D-Bus CLI。colors.json 連携、自動ルール、ランチャー、ワンライナーインストーラ。GNOME Shell 50.1 実機で確認済み。詳細は linux/README.md)
