@@ -23,7 +23,8 @@
 6. 自動ルール (rules.json): タイトル/実行ファイル名の正規表現に一致する新規ウィンドウへ自動着色
    (Windows / Linux 版で実装済み。手動操作したウィンドウには適用しない)
 7. ランチャーモード: `run <色> <コマンド>` 引数でアプリを起動し、そのウィンドウに着色
-   (Windows 版で実装済み。常駐インスタンスへ WM_COPYDATA で依頼)
+   (Windows / Linux 版で実装済み。Windows は常駐インスタンスへ WM_COPYDATA、
+   Linux は拡張へ D-Bus `TagPid` で依頼)
 
 ## OS別の制約
 
@@ -71,7 +72,12 @@
   (ルール適用済み・手動操作済み)には再適用しない。Linux では `exe` をプロセス名
   (`/proc/<pid>/exe`、無理なら `comm`)と WM_CLASS(Wayland の app-id)の両方に照合する。
   ファイルは Gio.FileMonitor で監視し保存時に自動再読み込み(D-Bus `Reload` / `Rules` もある)
-- ランチャーモード (run) は未実装
+- ランチャーモード (`wincolor run <色> <コマンド...>`): CLI がコマンドをバックグラウンド起動して
+  PID を取り、拡張の D-Bus `TagPid(pid, color, timeoutMs)` に依頼して結果を待つ(非同期メソッド)。
+  拡張は `window-created` で pid 一致または pid の子孫プロセス(`/proc/<pid>/stat` の PPid を遡る。
+  Flatpak / Snap / ラッパースクリプト対応)の窓を探す。PID を引き継がないアプリ(gnome-terminal の
+  クライアント/サーバ型、既存インスタンスに委譲するブラウザ等)向けに、不一致の新規窓が出たら
+  1.5 秒だけ一致を待ってからその窓に付ける。既定 10 秒(`WINCOLOR_RUN_TIMEOUT`)で諦める
 - KDE 等 GNOME 以外のコンポジタ、および X11 専用の代替実装は未着手
 - 詳細は `linux/README.md` を参照
 

@@ -10,6 +10,8 @@
 #   wincolor focused next|prev    パレットを順送り/逆送り (末尾の次は色なし)
 #   wincolor focused off
 #   wincolor clear-all            全部消す
+#   wincolor run <色> <コマンド...>  コマンドを起動し、そのウィンドウに色を付ける (ランチャー。
+#                                 .desktop の Exec= やショートカットに書く。WINCOLOR_RUN_TIMEOUT 秒、既定 10)
 #   wincolor rules                読み込み済みの自動ルール一覧 (title / exe / color)
 #   wincolor reload               colors.json / rules.json を再読み込み (保存時にも自動で再読み込みされる)
 #   wincolor --version            バージョン表示
@@ -34,7 +36,7 @@ IFACE=jp.smart2j.WindowColorTag
 call() {
     local method=$1; shift
     local out
-    out=$(gdbus call --session --dest "$DEST" --object-path "$PATH_" \
+    out=$(gdbus call --session --timeout "${GDBUS_TIMEOUT:-25}" --dest "$DEST" --object-path "$PATH_" \
         --method "$IFACE.$method" "$@")
     # gdbus は ('...',) 形式で返すので中身だけ取り出す
     out=${out#\(\'}
@@ -42,7 +44,24 @@ call() {
     printf '%b\n' "$out"
 }
 
+# ランチャー: 色を検証 → コマンドを起動 → 拡張にその PID の窓への着色を依頼して待つ
+run_launcher() {
+    local color=${1:?色を指定してください (例: wincolor run red firefox)}; shift
+    [ $# -ge 1 ] || { echo "error: 起動するコマンドを指定してください (例: wincolor run red firefox)" >&2; exit 2; }
+    # 色の事前検証 (プリセット名 / ラベル / #RRGGBB)。起動してから失敗しないように先に見る
+    if ! [[ $color =~ ^#[0-9A-Fa-f]{6}$ ]] && \
+       ! call Palette | awk -F'\t' -v c="$color" 'tolower($1)==tolower(c) || $2==c {found=1} END {exit !found}'; then
+        echo "error: 不明な色です: $color (wincolor colors で一覧)" >&2; exit 2
+    fi
+    local timeout_s=${WINCOLOR_RUN_TIMEOUT:-10}
+    "$@" &
+    local pid=$!
+    disown "$pid" 2>/dev/null || true
+    GDBUS_TIMEOUT=$((timeout_s + 5)) call TagPid "$pid" "$color" "$((timeout_s * 1000))"
+}
+
 case "${1:-}" in
+    run)       shift; run_launcher "$@" ;;
     list)      call List ;;
     colors)    call Palette ;;
     rules)     call Rules ;;

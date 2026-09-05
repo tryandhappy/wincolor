@@ -46,6 +46,8 @@ const DEFAULT_PRESETS = [
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 const RELOAD_DEBOUNCE_MS = 500;  // 設定ファイル変更 → 再読み込みまでの待ち
+const LAUNCH_FALLBACK_GRACE_MS = 1500;  // PID 不一致の新規窓が出てから、PID 一致の窓をさらに待つ時間
+const LAUNCH_MAX_TIMEOUT_MS = 120000;
 
 const DBUS_PATH = '/jp/smart2j/WindowColorTag';
 const DBUS_IFACE = `
@@ -73,6 +75,12 @@ const DBUS_IFACE = `
       <arg type="s" name="result" direction="out"/>
     </method>
     <method name="Reload">
+      <arg type="s" name="result" direction="out"/>
+    </method>
+    <method name="TagPid">
+      <arg type="i" name="pid" direction="in"/>
+      <arg type="s" name="color" direction="in"/>
+      <arg type="i" name="timeoutMs" direction="in"/>
       <arg type="s" name="result" direction="out"/>
     </method>
   </interface>
@@ -109,12 +117,14 @@ export default class WindowColorTagExtension extends Extension {
             Meta.KeyBindingFlags.NONE, Shell.ActionMode.NORMAL,
             () => this.Set('focused', 'next'));
 
+        this._pendingLaunches = [];  // TagPid の待ち行列
         this._startRules();
         this._startConfigMonitors();
     }
 
     disable() {
         this._stopConfigMonitors();
+        this._cancelLaunches('extension disabled');
         this._stopRules();
         Main.wm.removeKeybinding('open-window-menu');
         Main.wm.removeKeybinding('cycle-color');
@@ -333,6 +343,117 @@ export default class WindowColorTagExtension extends Extension {
                `rules: ${this._rules.length} (${this._rulesPath ?? 'none'})`;
     }
 
+    // ---- launcher (wincolor run) ----
+
+    // CLI が起動したプロセス (pid) のウィンドウが現れたら色を付ける。結果が出るまで返さない
+    // (GJS の DBusExportedObject は <name>Async があれば invocation 付きで呼ぶ)。
+    // 判定: 窓の pid が一致、または pid の子孫プロセス。PID を引き継がないアプリ
+    // (gnome-terminal のクライアント/サーバ型、既存インスタンスへ委譲するブラウザ等) のため、
+    // 不一致の新規窓が出た場合も LAUNCH_FALLBACK_GRACE_MS だけ一致を待ってから、その窓に付ける
+    TagPidAsync([pid, colorSpec, timeoutMs], invocation) {
+        const reply = s => invocation.return_value(new GLib.Variant('(s)', [s]));
+        const color = this._resolveColor(colorSpec);
+        if (!color) {
+            reply(`invalid color: ${colorSpec}`);
+            return;
+        }
+        if (!Number.isInteger(pid) || pid <= 1) {
+            reply(`invalid pid: ${pid}`);
+            return;
+        }
+        const timeout = Math.min(Math.max(timeoutMs, 500), LAUNCH_MAX_TIMEOUT_MS);
+        const p = {pid, color, reply, fallback: null, timeoutId: 0, graceId: 0};
+
+        // すでに窓が出ている場合 (起動が速いアプリ)
+        for (const actor of global.get_window_actors()) {
+            const w = actor.meta_window;
+            if (w && !w.is_skip_taskbar() && this._belongsToPid(w, pid)) {
+                this._finishLaunch(p, w, 'pid');
+                return;
+            }
+        }
+
+        p.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, timeout, () => {
+            p.timeoutId = 0;
+            this._finishLaunch(p, p.fallback, p.fallback ? 'fallback (timeout)' : null);
+            return GLib.SOURCE_REMOVE;
+        });
+        this._pendingLaunches.push(p);
+    }
+
+    _onWindowCreatedForLaunch(win) {
+        if (!this._pendingLaunches?.length || !win || win.is_skip_taskbar())
+            return;
+        for (const p of [...this._pendingLaunches]) {
+            if (this._belongsToPid(win, p.pid)) {
+                this._finishLaunch(p, win, 'pid');
+            } else if (!p.fallback) {
+                p.fallback = win;
+                p.graceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, LAUNCH_FALLBACK_GRACE_MS, () => {
+                    p.graceId = 0;
+                    this._finishLaunch(p, p.fallback, 'fallback');
+                    return GLib.SOURCE_REMOVE;
+                });
+            }
+        }
+    }
+
+    _finishLaunch(p, win, how) {
+        const i = this._pendingLaunches?.indexOf(p) ?? -1;
+        if (i >= 0)
+            this._pendingLaunches.splice(i, 1);
+        if (p.timeoutId)
+            GLib.source_remove(p.timeoutId);
+        if (p.graceId)
+            GLib.source_remove(p.graceId);
+        p.timeoutId = p.graceId = 0;
+        if (!win) {
+            p.reply(`no window appeared for pid ${p.pid}`);
+            return;
+        }
+        this._markManual(win);
+        this._addTag(win, p.color);
+        p.reply(`ok: [${win.get_id()}] ${win.get_wm_class() ?? '?'} "${win.get_title() ?? ''}" -> ${this._describe(p.color)} (matched by ${how}, pid ${win.get_pid()})`);
+    }
+
+    _cancelLaunches(reason) {
+        for (const p of [...(this._pendingLaunches ?? [])]) {
+            this._pendingLaunches.splice(this._pendingLaunches.indexOf(p), 1);
+            if (p.timeoutId)
+                GLib.source_remove(p.timeoutId);
+            if (p.graceId)
+                GLib.source_remove(p.graceId);
+            p.reply(`cancelled: ${reason}`);
+        }
+        this._pendingLaunches = null;
+    }
+
+    // 窓の pid が pid と一致するか、pid の子孫プロセスか
+    _belongsToPid(win, pid) {
+        let cur = win.get_pid();
+        for (let depth = 0; depth < 32 && cur > 1; depth++) {
+            if (cur === pid)
+                return true;
+            cur = this._parentPid(cur);
+        }
+        return false;
+    }
+
+    // /proc/<pid>/stat から親 pid を読む。読めなければ 0
+    _parentPid(pid) {
+        try {
+            const [ok, bytes] = GLib.file_get_contents(`/proc/${pid}/stat`);
+            if (!ok)
+                return 0;
+            const stat = new TextDecoder().decode(bytes);
+            // "pid (comm) S ppid ..." — comm に空白や括弧が入り得るので最後の ')' 以降を見る
+            const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+            return Number(fields[1]) || 0;
+        } catch {
+            return 0;
+        }
+    }
+
     // ---- auto rules ----
 
     // 新規ウィンドウとタイトル/クラス変化を監視してルールを照合する。
@@ -340,8 +461,10 @@ export default class WindowColorTagExtension extends Extension {
     _startRules() {
         this._ruleDone = new WeakSet();  // MetaWindow。unmanaged 後は GC に任せる
         this._watched = new Map();       // MetaWindow -> signal ids
-        this._windowCreatedId = global.display.connect('window-created',
-            (_display, win) => this._watchWindow(win));
+        this._windowCreatedId = global.display.connect('window-created', (_display, win) => {
+            this._onWindowCreatedForLaunch(win);
+            this._watchWindow(win);
+        });
         for (const actor of global.get_window_actors())
             this._watchWindow(actor.meta_window);
     }
