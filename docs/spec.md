@@ -21,7 +21,7 @@
    - タイトルバー文字色
 5. 設定はウィンドウ生存中のみ有効
 6. 自動ルール (rules.json): タイトル/実行ファイル名の正規表現に一致する新規ウィンドウへ自動着色
-   (Windows 版で実装済み。手動操作したウィンドウには適用しない)
+   (Windows / Linux 版で実装済み。手動操作したウィンドウには適用しない)
 7. ランチャーモード: `run <色> <コマンド>` 引数でアプリを起動し、そのウィンドウに着色
    (Windows 版で実装済み。常駐インスタンスへ WM_COPYDATA で依頼)
 
@@ -66,7 +66,12 @@
   の順に探索。install.sh とリリース zip は拡張ディレクトリに同梱する。読めなければ組み込み既定)。
   D-Bus `Set` はプリセット名 / ラベル / `#RRGGBB` を受け付け、`Palette` で一覧を返す。
   `textHex` はタイトル文字をアプリや mutter が描く Linux では使わない(タイントは半透明の重ね描き)
-- 自動ルール (rules.json) / ランチャーモード (run) は未実装
+- 自動ルール (rules.json) は `~/.config/wincolor/rules.json`(→ 拡張ディレクトリ → `../../shared/`)
+  から読む。`window-created` とタイトル/WM_CLASS の変化で照合し、一度色を確定した窓
+  (ルール適用済み・手動操作済み)には再適用しない。Linux では `exe` をプロセス名
+  (`/proc/<pid>/exe`、無理なら `comm`)と WM_CLASS(Wayland の app-id)の両方に照合する。
+  ファイルは Gio.FileMonitor で監視し保存時に自動再読み込み(D-Bus `Reload` / `Rules` もある)
+- ランチャーモード (run) は未実装
 - KDE 等 GNOME 以外のコンポジタ、および X11 専用の代替実装は未着手
 - 詳細は `linux/README.md` を参照
 
