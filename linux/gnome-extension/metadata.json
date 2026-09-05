@@ -3,7 +3,8 @@
   "name": "Window Color Tag",
   "description": "Tag individual windows with a colored border and titlebar tint. Controlled via D-Bus (wincolor command).",
   "shell-version": [
-    "50"
+    "50",
+    "51"
   ],
   "version-name": "0.2.0",
   "settings-schema": "org.gnome.shell.extensions.window-color-tag",

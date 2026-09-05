@@ -155,7 +155,7 @@ jobs:
           files: dist/wincolor-linux-*.zip
           generate_release_notes: true
           body: |
-            ## インストール (GNOME Shell 50)
+            ## インストール (GNOME Shell 50 / 51)
             ```sh
             unzip wincolor-linux-v${{ steps.v.outputs.version }}.zip && cd wincolor && ./install.sh
             ```

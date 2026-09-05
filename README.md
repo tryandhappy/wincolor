@@ -31,14 +31,15 @@ wincolor/
 ## 対応環境 (Linux 版)
 
 Linux 版は GNOME Shell 拡張として実装しているため、**対応可否はディストリビューションではなく
-GNOME Shell のバージョンで決まる**。GNOME Shell 50 が入っていればディストリを問わず動作する。
+GNOME Shell のバージョンで決まる**。GNOME Shell 50 / 51 が入っていればディストリを問わず動作する。
 
 | 区分 | GNOME Shell | ディストリビューション例 | 状態 |
 |---|---|---|---|
 | 対応 | 50 | Ubuntu 26.04 LTS、Fedora 44、Debian 14、Arch Linux / openSUSE Tumbleweed (GNOME 50 系) | 動作確認済み (Ubuntu 26.04 / GNOME Shell 50.1 / Wayland) |
+| 対応 (実機未確認) | 51 | Ubuntu 26.10、Fedora 45、Arch Linux / openSUSE Tumbleweed (GNOME 51 系、2026 年 9 月〜) | `shell-version` に追加済み。51.rc のソースで依存 API (`WindowMenu._buildMenu`、`Main.wm._windowMenuManager.showWindowMenuForWindow`、`addKeybinding`、`St.BoxLayout.orientation`、`global.window_group`、`MetaWindow.get_pid` 等) が不変であることを確認。51 で削除された `St.BoxLayout.vertical` は使っていない |
 | 未確認 | 45〜49 | Ubuntu 24.04 LTS (46)、Fedora 42/43、Debian 13 (48) | コードは動く見込みだが `linux/gnome-extension/metadata.json` の `shell-version` が `50` 固定のため無効化される。追記して実機確認すれば対応可 |
 | 非対応 | 44 以前 | Ubuntu 22.04 LTS (42)、Debian 12 (43)、RHEL 9 系 (40) | 拡張が ESM 形式 (GNOME 45 で導入) のため読み込み不可 |
-| 非対応 | 51 以降 | (今後のリリース) | `shell-version` 不一致で無効化。非公開 API (`Main.wm._windowMenuManager` 等) に依存しているため要追従 |
+| 非対応 | 52 以降 | (今後のリリース、2027 年 3 月〜) | `shell-version` 不一致で無効化。非公開 API (`Main.wm._windowMenuManager` 等) に依存しているため、リリースごとにソースを確認して追従する |
 
 - セッションは **Wayland / X11 の両方に対応**。mutter 内部に描画するため、Wayland ネイティブ窓
   (Chrome 等の CSD アプリ) にも枠が付く。
