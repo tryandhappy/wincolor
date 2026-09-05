@@ -35,11 +35,23 @@ mkdir -p "$EXT_DST"
 cp -r "$EXT_SRC"/. "$EXT_DST"/
 glib-compile-schemas "$EXT_DST/schemas/"
 
+# 色プリセット (shared/colors.json) を拡張ディレクトリに同梱する
+# 探索順: バンドル zip 構成 (./shared/) → リポジトリ構成 (../shared/)
+colors=""
+for cand in "$SRC_DIR/shared/colors.json" "$SRC_DIR/../shared/colors.json"; do
+    [ -f "$cand" ] && { colors=$cand; break; }
+done
+if [ -n "$colors" ]; then
+    install -m 0644 "$colors" "$EXT_DST/colors.json"
+else
+    echo "note: shared/colors.json が見つからないため、拡張の組み込み既定パレットを使用します"
+fi
+
 # CLI を配置
 mkdir -p "$BIN_DST"
 install -m 0755 "$SRC_DIR/bin/wincolor" "$BIN_DST/wincolor"
 
-echo "installed: $EXT_DST"
+echo "installed: $EXT_DST${colors:+ (colors.json 同梱)}"
 echo "installed: $BIN_DST/wincolor"
 case ":$PATH:" in *":$BIN_DST:"*) ;; *) echo "note: $BIN_DST が PATH に入っていません" ;; esac
 
