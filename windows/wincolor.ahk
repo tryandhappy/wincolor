@@ -17,8 +17,9 @@
 ; 単一インスタンス制御は手動で行う (ReplaceExistingResident)
 #SingleInstance Off
 
-WINCOLOR_VERSION := "1.0.1"
+WINCOLOR_VERSION := "1.1.0"
 RESIDENT_MARKER  := "wincolor_resident"   ; 常駐インスタンスの隠しウィンドウ識別タイトル
+AUTOSTART_ITEM   := "ログオン時に自動起動"  ; トレイメニュー項目名 (チェック状態の操作に使う)
 WM_COPYDATA_MAGIC := 0x57434C31           ; 'WCL1'
 
 DWMWA_BORDER_COLOR  := 34
@@ -100,11 +101,59 @@ SetupTray() {
     tray.Add("ウィンドウ一覧から着色…", ShowWindowList)
     tray.Add("すべて既定に戻す", ResetAll)
     tray.Add()
+    tray.Add(AUTOSTART_ITEM, ToggleAutoStart)
+    UpdateAutoStartCheck()
+    tray.Add()
     tray.Add("使い方", ShowHelp)
     tray.Add("再読み込み", (*) => Reload())
     tray.Add("終了", (*) => ExitApp())
     tray.Default := "ウィンドウ一覧から着色…"
 }
+
+; ---------------------------------------------------------------- 自動起動
+
+; スタートアップフォルダのショートカット。MSI インストール時と同じパス・同じ名前なので、
+; MSI で入れた場合もこのトグルで ON/OFF できる
+StartupLinkPath() => A_Startup "\wincolor.lnk"
+
+AutoStartEnabled() => FileExist(StartupLinkPath()) != ""
+
+UpdateAutoStartCheck() {
+    if AutoStartEnabled()
+        A_TrayMenu.Check(AUTOSTART_ITEM)
+    else
+        A_TrayMenu.Uncheck(AUTOSTART_ITEM)
+}
+
+ToggleAutoStart(*) {
+    link := StartupLinkPath()
+    if AutoStartEnabled() {
+        try {
+            FileDelete(link)
+        } catch as e {
+            MsgBox("自動起動の解除に失敗しました:`n" link "`n" e.Message, "wincolor")
+            return
+        }
+        TrayTip("ログオン時の自動起動を解除しました", "wincolor")
+    } else {
+        ; exe 版はそのまま、ソース実行時は AutoHotkey64.exe にスクリプトを渡す
+        if A_IsCompiled
+            target := A_ScriptFullPath, args := ""
+        else
+            target := A_AhkPath, args := '"' A_ScriptFullPath '"'
+        try {
+            FileCreateShortcut(target, link, A_ScriptDir, args,
+                "wincolor - ウィンドウ着色", A_IsCompiled ? A_ScriptFullPath : "")
+        } catch as e {
+            MsgBox("自動起動の設定に失敗しました:`n" link "`n" e.Message, "wincolor")
+            return
+        }
+        TrayTip("次回ログオン時から自動起動します", "wincolor")
+    }
+    UpdateAutoStartCheck()
+}
+
+; ---------------------------------------------------------------- メニュー(続き)
 
 ShowWindowList(*) {
     m := Menu()
@@ -153,7 +202,8 @@ ShowHelp(*) {
         "  または右ボタン長押し(0.4秒) → 色を選択`n"
         "・またはトレイアイコン右クリック →「ウィンドウ一覧から着色…」`n"
         "・rules.json に自動ルール(タイトル/exe名 → 色)を書ける`n"
-        "・ショートカット起動: wincolor.ahk run <色> <コマンド>`n`n"
+        "・ショートカット起動: wincolor.ahk run <色> <コマンド>`n"
+        "・トレイメニュー「ログオン時に自動起動」で自動起動を ON/OFF`n`n"
         "■ 注意`n"
         "・Windows 11 専用(DWM API を使用)`n"
         "・色はウィンドウを閉じるまで有効(アプリ再起動で戻ります)`n"

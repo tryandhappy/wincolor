@@ -67,6 +67,6 @@ git push origin main --tags
 
 ## ステータス
 
-- [x] Windows 版 v1.0.1(AutoHotkey v2 / DWM + オーバーレイ枠。MSI 配布、自動ルール、ランチャー)
+- [x] Windows 版 v1.1.0(AutoHotkey v2 / DWM + オーバーレイ枠。MSI 配布、自動ルール、ランチャー、自動起動トグル)
 - [ ] macOS 版(Swift 実装を作成済み、CI ビルドのみ。実機での動作確認とリリースが未了。詳細は macos/README.md)
 - [x] Linux 版 v0.2.3(GNOME Shell 50 / 51 拡張 + D-Bus CLI。colors.json 連携、自動ルール、ランチャー、ワンライナーインストーラ。GNOME Shell 50.1 実機で確認済み。詳細は linux/README.md)
