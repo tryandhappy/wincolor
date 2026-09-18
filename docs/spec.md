@@ -77,8 +77,12 @@
 - Alt+Tab の切り替え一覧にも反映する。`switcherPopup.SwitcherList.addItem` を包み、
   項目ウィジェットに色枠を付ける(1 アプリに複数色の窓がある場合は色ドットを並べる)。
   アプリ切り替え(`AppIcon.cachedWindows`)・ウィンドウ切り替え(`WindowIcon.window`)・
-  窓サムネイル一覧(`ThumbnailSwitcher._windows`)の 3 経路に対応。
-  オーバービュー(Super)のウィンドウプレビューは別実装のため未対応
+  窓サムネイル一覧(`ThumbnailSwitcher._windows`)の 3 経路に対応
+- オーバービュー(Super)のウィンドウプレビューにも反映する。`windowPreview.WindowPreview.prototype._init`
+  を包んで枠ウィジェットを子に足し、`window_container` の割り当てに `BindConstraint`(ALL)で追従させ、
+  オーバービュー出入りの拡大縮小に合わせて `scale-x` / `scale-y` も束縛する。
+  プレビューはオーバービューを開いている間だけ存在するため、生きているプレビューを Set で持ち、
+  色の変更 (`_addTag` / `_removeTag`) で張り替える。ワークスペースサムネイル内の小さな窓は未対応
 - 色パレットは `shared/colors.json` を読む(拡張ディレクトリ直下 → リポジトリの `../../shared/`
   の順に探索。install.sh とリリース zip は拡張ディレクトリに同梱する。読めなければ組み込み既定)。
   D-Bus `Set` はプリセット名 / ラベル / `#RRGGBB` を受け付け、`Palette` で一覧を返す。

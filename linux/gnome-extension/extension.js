@@ -1,4 +1,5 @@
 import St from 'gi://St';
+import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
@@ -8,6 +9,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as WindowMenu from 'resource:///org/gnome/shell/ui/windowMenu.js';
 import * as SwitcherPopup from 'resource:///org/gnome/shell/ui/switcherPopup.js';
+import * as WindowPreview from 'resource:///org/gnome/shell/ui/windowPreview.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 const BORDER_WIDTH = 3;
@@ -21,6 +23,9 @@ const SWATCHES_PER_ROW = 8;
 const SWITCHER_BORDER_WIDTH = 3;   // Alt+Tab 項目の枠
 const SWITCHER_RADIUS = 6;
 const SWITCHER_DOT_SIZE = 8;       // 1 アプリに複数色の窓があるときの色ドット
+
+const PREVIEW_BORDER_WIDTH = 4;    // オーバービューのウィンドウプレビューの枠
+const PREVIEW_RADIUS = 6;
 
 // 組み込み既定パレット。shared/colors.json が読めない場合のみ使用する
 // (内容は shared/colors.json と同一に保つ。Windows 版の DefaultPresets() と同じ)
@@ -125,6 +130,19 @@ export default class WindowColorTagExtension extends Extension {
             return bbox;
         };
 
+        // オーバービューのウィンドウプレビューにも色枠を重ねる
+        this._previews = new Set();
+        this._origPreviewInit = WindowPreview.WindowPreview.prototype._init;
+        const origPreviewInit = this._origPreviewInit;
+        WindowPreview.WindowPreview.prototype._init = function (...args) {
+            origPreviewInit.apply(this, args);
+            try {
+                ext._decorateWindowPreview(this);
+            } catch (e) {
+                console.error(e, 'wincolor: failed to decorate window preview');
+            }
+        };
+
         // CSD ウィンドウ (Chrome 等) はタイトルバー右クリックが効かないため、
         // mutter ネイティブのキーバインドでメニューを開けるようにする
         this._settings = this.getSettings();
@@ -167,6 +185,11 @@ export default class WindowColorTagExtension extends Extension {
             SwitcherPopup.SwitcherList.prototype.addItem = this._origAddItem;
             this._origAddItem = null;
         }
+        if (this._origPreviewInit) {
+            WindowPreview.WindowPreview.prototype._init = this._origPreviewInit;
+            this._origPreviewInit = null;
+        }
+        this._previews = null;
     }
 
     // ---- palette ----
@@ -738,6 +761,56 @@ export default class WindowColorTagExtension extends Extension {
         item.add_child(dots);
     }
 
+    // オーバービューのウィンドウプレビューに色枠を重ねる。
+    // 枠は WindowPreview の子として window_container の割り当てに追従させる
+    // (window_container はオーバービューの出入りで拡大縮小するので、倍率も束縛する)
+    _decorateWindowPreview(preview) {
+        if (!this._previews)
+            return;
+        this._previews.add(preview);
+        preview.connect('destroy', () => this._previews?.delete(preview));
+        this._syncPreview(preview);
+    }
+
+    _syncPreview(preview) {
+        const hex = this._tags?.get(preview.metaWindow)?.hex;
+        if (!hex) {
+            preview._wincolorBorder?.destroy();
+            preview._wincolorBorder = null;
+            return;
+        }
+
+        if (!preview._wincolorBorder) {
+            const container = preview.window_container;
+            const border = new St.Widget({reactive: false});
+            border.set_pivot_point(0.5, 0.5);   // container と同じ拡大中心
+            border.add_constraint(new Clutter.BindConstraint({
+                source: container,
+                coordinate: Clutter.BindCoordinate.ALL,
+            }));
+            container.bind_property('scale-x', border, 'scale-x',
+                GObject.BindingFlags.SYNC_CREATE);
+            container.bind_property('scale-y', border, 'scale-y',
+                GObject.BindingFlags.SYNC_CREATE);
+            preview.insert_child_above(border, container);
+            preview._wincolorBorder = border;
+        }
+
+        preview._wincolorBorder.set_style(
+            `border: ${PREVIEW_BORDER_WIDTH}px solid ${hex}; ` +
+            `border-radius: ${PREVIEW_RADIUS}px;`);
+    }
+
+    // 表示中のプレビュー (オーバービューを開いている間だけ存在する) を色の変更に追従させる
+    _syncPreviewsFor(win) {
+        if (!this._previews)
+            return;
+        for (const preview of this._previews) {
+            if (preview.metaWindow === win)
+                this._syncPreview(preview);
+        }
+    }
+
     _openMenuForFocused() {
         const win = global.display.focus_window;
         if (!win || win.is_skip_taskbar())
@@ -786,6 +859,7 @@ export default class WindowColorTagExtension extends Extension {
             existing.name = color.name;
             existing.hex = color.hex;
             this._applyStyle(existing);
+            this._syncPreviewsFor(win);
             return;
         }
 
@@ -810,6 +884,7 @@ export default class WindowColorTagExtension extends Extension {
 
         sync();
         this._restackAll();
+        this._syncPreviewsFor(win);
     }
 
     _removeTag(win) {
@@ -823,6 +898,7 @@ export default class WindowColorTagExtension extends Extension {
         tag.border.destroy();
         tag.tint.destroy();
         this._tags.delete(win);
+        this._syncPreviewsFor(win);
     }
 
     _applyStyle(tag) {
