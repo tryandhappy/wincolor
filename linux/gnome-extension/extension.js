@@ -7,6 +7,7 @@ import Clutter from 'gi://Clutter';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as WindowMenu from 'resource:///org/gnome/shell/ui/windowMenu.js';
+import * as SwitcherPopup from 'resource:///org/gnome/shell/ui/switcherPopup.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 const BORDER_WIDTH = 3;
@@ -16,6 +17,10 @@ const TINT_OPACITY = 80;     // 0-255
 
 const SWATCH_SIZE = 24;
 const SWATCHES_PER_ROW = 8;
+
+const SWITCHER_BORDER_WIDTH = 3;   // Alt+Tab 項目の枠
+const SWITCHER_RADIUS = 6;
+const SWITCHER_DOT_SIZE = 8;       // 1 アプリに複数色の窓があるときの色ドット
 
 // 組み込み既定パレット。shared/colors.json が読めない場合のみ使用する
 // (内容は shared/colors.json と同一に保つ。Windows 版の DefaultPresets() と同じ)
@@ -107,6 +112,19 @@ export default class WindowColorTagExtension extends Extension {
             ext._appendColorRow(this, window);
         };
 
+        // Alt+Tab (アプリ切り替え / ウィンドウ切り替え / サムネイル一覧) の各項目にも色を反映する
+        this._origAddItem = SwitcherPopup.SwitcherList.prototype.addItem;
+        const origAddItem = this._origAddItem;
+        SwitcherPopup.SwitcherList.prototype.addItem = function (item, label) {
+            const bbox = origAddItem.call(this, item, label);
+            try {
+                ext._decorateSwitcherItem(this, item);
+            } catch (e) {
+                console.error(e, 'wincolor: failed to decorate switcher item');
+            }
+            return bbox;
+        };
+
         // CSD ウィンドウ (Chrome 等) はタイトルバー右クリックが効かないため、
         // mutter ネイティブのキーバインドでメニューを開けるようにする
         this._settings = this.getSettings();
@@ -144,6 +162,10 @@ export default class WindowColorTagExtension extends Extension {
         if (this._origBuildMenu) {
             WindowMenu.WindowMenu.prototype._buildMenu = this._origBuildMenu;
             this._origBuildMenu = null;
+        }
+        if (this._origAddItem) {
+            SwitcherPopup.SwitcherList.prototype.addItem = this._origAddItem;
+            this._origAddItem = null;
         }
     }
 
@@ -666,6 +688,54 @@ export default class WindowColorTagExtension extends Extension {
         addSwatch(offBtn);
 
         menu.addMenuItem(item);
+    }
+
+    // Alt+Tab の一覧項目に色を反映する。項目ウィジェットの種類ごとに対応する窓を割り出し、
+    // 単色なら枠、1 アプリに複数色の窓があるなら色ドットを足す
+    //   altTab.WindowIcon      … ウィンドウ切り替え (Alt+` など) → item.window
+    //   altTab.AppIcon         … アプリ切り替え (既定の Alt+Tab) → item.cachedWindows
+    //   altTab.ThumbnailSwitcher … アプリ配下の窓サムネイル → list._windows[i]
+    _decorateSwitcherItem(list, item) {
+        if (!this._tags || !item)
+            return;
+
+        let windows = null;
+        if (item.window)
+            windows = [item.window];
+        else if (item.cachedWindows)
+            windows = item.cachedWindows;
+        else if (list._windows && list._thumbnailBins)
+            windows = [list._windows[list._items.length - 1]];
+
+        const hexes = [];
+        for (const win of windows ?? []) {
+            const hex = win ? this._tags.get(win)?.hex : null;
+            if (hex && !hexes.includes(hex))
+                hexes.push(hex);
+        }
+        if (hexes.length === 0)
+            return;
+
+        if (hexes.length === 1) {
+            item.set_style(
+                `border: ${SWITCHER_BORDER_WIDTH}px solid ${hexes[0]}; ` +
+                `border-radius: ${SWITCHER_RADIUS}px; padding: 2px;`);
+            return;
+        }
+
+        const dots = new St.BoxLayout({
+            style: 'spacing: 3px;',
+            x_align: Clutter.ActorAlign.CENTER,
+        });
+        for (const hex of hexes) {
+            dots.add_child(new St.Widget({
+                width: SWITCHER_DOT_SIZE,
+                height: SWITCHER_DOT_SIZE,
+                style: `background-color: ${hex}; ` +
+                       `border-radius: ${SWITCHER_DOT_SIZE / 2}px;`,
+            }));
+        }
+        item.add_child(dots);
     }
 
     _openMenuForFocused() {

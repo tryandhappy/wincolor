@@ -23,6 +23,12 @@ GNOME Shell 拡張として動かし、mutter 内部の `window_group` に
 CSD(クライアント側装飾)アプリはタイトルバー右クリックが効かないため、
 `Super+C` で mutter ネイティブのキーバインドからウィンドウメニューを開けるようにしてある。
 
+Alt+Tab の切り替え一覧にも色を反映する。GNOME の switcher は
+`switcherPopup.SwitcherList.addItem` を通って項目を作るので、そこを包んで
+項目ウィジェットに色枠(単色)または色ドット(1 アプリに複数色の窓があるとき)を足している。
+既定の Alt+Tab(アプリ単位)、Alt+\`(同一アプリのウィンドウ単位)、
+アプリを選んだときに出る窓サムネイル一覧の 3 つすべてが対象。
+
 ## 要件
 
 - GNOME Shell 50 または 51(`metadata.json` の `shell-version` は `50` と `51`)。
