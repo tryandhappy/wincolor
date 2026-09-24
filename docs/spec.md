@@ -74,6 +74,19 @@
   CLI ラッパー `wincolor`(bash + `gdbus`)から操作する
 - CSD(クライアント側装飾)アプリはタイトルバー右クリックが効かないため、
   mutter キーバインド(既定 `Super+C` でメニュー表示、`Super+X` で色を順送り)で代替
+- Alt+Tab の切り替え一覧にも反映する。`switcherPopup.SwitcherList.addItem` を包み、
+  項目ウィジェットに色枠を付ける(1 アプリに複数色の窓がある場合は色ドットを並べる)。
+  アプリ切り替え(`AppIcon.cachedWindows`)・ウィンドウ切り替え(`WindowIcon.window`)・
+  窓サムネイル一覧(`ThumbnailSwitcher._windows`)の 3 経路に対応
+- オーバービュー(Super)のウィンドウプレビューにも反映する。`windowPreview.WindowPreview.prototype._init`
+  を包んで枠ウィジェットを子に足し、`window_container` の割り当てに `BindConstraint`(ALL)で追従させ、
+  オーバービュー出入りの拡大縮小に合わせて `scale-x` / `scale-y` も束縛する。
+  プレビューはオーバービューを開いている間だけ存在するため、生きているプレビューを Set で持ち、
+  色の変更 (`_addTag` / `_removeTag`) で張り替える
+- ワークスペースサムネイル内の小さな窓にも反映する。`workspaceThumbnail.WindowClone.prototype._init`
+  を包んで枠を子に足す。クローンの中身は実ウィンドウの座標系のままで `_viewport` ごと縮小されるため、
+  枠の太さは縮小率で割った値を CSS に入れる (画面上で常に約 3px に見せる)。縮小率は
+  `WorkspaceThumbnail.prototype.setScale` を包んで受け取り、そのたびに枠の位置・大きさも取り直す
 - 色パレットは `shared/colors.json` を読む(拡張ディレクトリ直下 → リポジトリの `../../shared/`
   の順に探索。install.sh とリリース zip は拡張ディレクトリに同梱する。読めなければ組み込み既定)。
   D-Bus `Set` はプリセット名 / ラベル / `#RRGGBB` を受け付け、`Palette` で一覧を返す。

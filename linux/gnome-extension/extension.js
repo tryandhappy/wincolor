@@ -1,4 +1,5 @@
 import St from 'gi://St';
+import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
@@ -7,6 +8,9 @@ import Clutter from 'gi://Clutter';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as WindowMenu from 'resource:///org/gnome/shell/ui/windowMenu.js';
+import * as SwitcherPopup from 'resource:///org/gnome/shell/ui/switcherPopup.js';
+import * as WindowPreview from 'resource:///org/gnome/shell/ui/windowPreview.js';
+import * as WorkspaceThumbnail from 'resource:///org/gnome/shell/ui/workspaceThumbnail.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 const BORDER_WIDTH = 3;
@@ -16,6 +20,18 @@ const TINT_OPACITY = 80;     // 0-255
 
 const SWATCH_SIZE = 24;
 const SWATCHES_PER_ROW = 8;
+
+const SWITCHER_BORDER_WIDTH = 3;   // Alt+Tab 項目の枠
+const SWITCHER_RADIUS = 6;
+const SWITCHER_DOT_SIZE = 8;       // 1 アプリに複数色の窓があるときの色ドット
+
+const PREVIEW_BORDER_WIDTH = 4;    // オーバービューのウィンドウプレビューの枠
+const PREVIEW_RADIUS = 6;
+
+// ワークスペースサムネイル内の枠。中身は実ウィンドウの座標系のまま _viewport ごと
+// 縮小されるので、画面上でこの太さに見えるようスケールで割った値を CSS に入れる
+const WS_THUMB_BORDER_PX = 3;
+const WS_THUMB_RADIUS_PX = 4;
 
 // 組み込み既定パレット。shared/colors.json が読めない場合のみ使用する
 // (内容は shared/colors.json と同一に保つ。Windows 版の DefaultPresets() と同じ)
@@ -107,6 +123,58 @@ export default class WindowColorTagExtension extends Extension {
             ext._appendColorRow(this, window);
         };
 
+        // Alt+Tab (アプリ切り替え / ウィンドウ切り替え / サムネイル一覧) の各項目にも色を反映する
+        this._origAddItem = SwitcherPopup.SwitcherList.prototype.addItem;
+        const origAddItem = this._origAddItem;
+        SwitcherPopup.SwitcherList.prototype.addItem = function (item, label) {
+            const bbox = origAddItem.call(this, item, label);
+            try {
+                ext._decorateSwitcherItem(this, item);
+            } catch (e) {
+                console.error(e, 'wincolor: failed to decorate switcher item');
+            }
+            return bbox;
+        };
+
+        // オーバービューのウィンドウプレビューにも色枠を重ねる
+        this._previews = new Set();
+        this._origPreviewInit = WindowPreview.WindowPreview.prototype._init;
+        const origPreviewInit = this._origPreviewInit;
+        WindowPreview.WindowPreview.prototype._init = function (...args) {
+            origPreviewInit.apply(this, args);
+            try {
+                ext._decorateWindowPreview(this);
+            } catch (e) {
+                console.error(e, 'wincolor: failed to decorate window preview');
+            }
+        };
+
+        // ワークスペースサムネイル内の小さなウィンドウにも色枠を重ねる。
+        // 枠の太さはサムネイルの縮小率に依存するので、setScale も包んで追従させる
+        this._wsClones = new Set();
+        this._origCloneInit = WorkspaceThumbnail.WindowClone.prototype._init;
+        const origCloneInit = this._origCloneInit;
+        WorkspaceThumbnail.WindowClone.prototype._init = function (...args) {
+            origCloneInit.apply(this, args);
+            try {
+                ext._decorateWorkspaceClone(this);
+            } catch (e) {
+                console.error(e, 'wincolor: failed to decorate workspace clone');
+            }
+        };
+
+        this._origSetScale = WorkspaceThumbnail.WorkspaceThumbnail.prototype.setScale;
+        const origSetScale = this._origSetScale;
+        WorkspaceThumbnail.WorkspaceThumbnail.prototype.setScale = function (scaleX, scaleY) {
+            origSetScale.call(this, scaleX, scaleY);
+            try {
+                for (const clone of this._windows ?? [])
+                    ext._syncWorkspaceClone(clone, scaleX);
+            } catch (e) {
+                console.error(e, 'wincolor: failed to rescale workspace clone border');
+            }
+        };
+
         // CSD ウィンドウ (Chrome 等) はタイトルバー右クリックが効かないため、
         // mutter ネイティブのキーバインドでメニューを開けるようにする
         this._settings = this.getSettings();
@@ -145,6 +213,24 @@ export default class WindowColorTagExtension extends Extension {
             WindowMenu.WindowMenu.prototype._buildMenu = this._origBuildMenu;
             this._origBuildMenu = null;
         }
+        if (this._origAddItem) {
+            SwitcherPopup.SwitcherList.prototype.addItem = this._origAddItem;
+            this._origAddItem = null;
+        }
+        if (this._origPreviewInit) {
+            WindowPreview.WindowPreview.prototype._init = this._origPreviewInit;
+            this._origPreviewInit = null;
+        }
+        this._previews = null;
+        if (this._origCloneInit) {
+            WorkspaceThumbnail.WindowClone.prototype._init = this._origCloneInit;
+            this._origCloneInit = null;
+        }
+        if (this._origSetScale) {
+            WorkspaceThumbnail.WorkspaceThumbnail.prototype.setScale = this._origSetScale;
+            this._origSetScale = null;
+        }
+        this._wsClones = null;
     }
 
     // ---- palette ----
@@ -668,6 +754,152 @@ export default class WindowColorTagExtension extends Extension {
         menu.addMenuItem(item);
     }
 
+    // Alt+Tab の一覧項目に色を反映する。項目ウィジェットの種類ごとに対応する窓を割り出し、
+    // 単色なら枠、1 アプリに複数色の窓があるなら色ドットを足す
+    //   altTab.WindowIcon      … ウィンドウ切り替え (Alt+` など) → item.window
+    //   altTab.AppIcon         … アプリ切り替え (既定の Alt+Tab) → item.cachedWindows
+    //   altTab.ThumbnailSwitcher … アプリ配下の窓サムネイル → list._windows[i]
+    _decorateSwitcherItem(list, item) {
+        if (!this._tags || !item)
+            return;
+
+        let windows = null;
+        if (item.window)
+            windows = [item.window];
+        else if (item.cachedWindows)
+            windows = item.cachedWindows;
+        else if (list._windows && list._thumbnailBins)
+            windows = [list._windows[list._items.length - 1]];
+
+        const hexes = [];
+        for (const win of windows ?? []) {
+            const hex = win ? this._tags.get(win)?.hex : null;
+            if (hex && !hexes.includes(hex))
+                hexes.push(hex);
+        }
+        if (hexes.length === 0)
+            return;
+
+        if (hexes.length === 1) {
+            item.set_style(
+                `border: ${SWITCHER_BORDER_WIDTH}px solid ${hexes[0]}; ` +
+                `border-radius: ${SWITCHER_RADIUS}px; padding: 2px;`);
+            return;
+        }
+
+        const dots = new St.BoxLayout({
+            style: 'spacing: 3px;',
+            x_align: Clutter.ActorAlign.CENTER,
+        });
+        for (const hex of hexes) {
+            dots.add_child(new St.Widget({
+                width: SWITCHER_DOT_SIZE,
+                height: SWITCHER_DOT_SIZE,
+                style: `background-color: ${hex}; ` +
+                       `border-radius: ${SWITCHER_DOT_SIZE / 2}px;`,
+            }));
+        }
+        item.add_child(dots);
+    }
+
+    // オーバービューのウィンドウプレビューに色枠を重ねる。
+    // 枠は WindowPreview の子として window_container の割り当てに追従させる
+    // (window_container はオーバービューの出入りで拡大縮小するので、倍率も束縛する)
+    _decorateWindowPreview(preview) {
+        if (!this._previews)
+            return;
+        this._previews.add(preview);
+        preview.connect('destroy', () => this._previews?.delete(preview));
+        this._syncPreview(preview);
+    }
+
+    _syncPreview(preview) {
+        const hex = this._tags?.get(preview.metaWindow)?.hex;
+        if (!hex) {
+            preview._wincolorBorder?.destroy();
+            preview._wincolorBorder = null;
+            return;
+        }
+
+        if (!preview._wincolorBorder) {
+            const container = preview.window_container;
+            const border = new St.Widget({reactive: false});
+            border.set_pivot_point(0.5, 0.5);   // container と同じ拡大中心
+            border.add_constraint(new Clutter.BindConstraint({
+                source: container,
+                coordinate: Clutter.BindCoordinate.ALL,
+            }));
+            container.bind_property('scale-x', border, 'scale-x',
+                GObject.BindingFlags.SYNC_CREATE);
+            container.bind_property('scale-y', border, 'scale-y',
+                GObject.BindingFlags.SYNC_CREATE);
+            preview.insert_child_above(border, container);
+            preview._wincolorBorder = border;
+        }
+
+        preview._wincolorBorder.set_style(
+            `border: ${PREVIEW_BORDER_WIDTH}px solid ${hex}; ` +
+            `border-radius: ${PREVIEW_RADIUS}px;`);
+    }
+
+    // 表示中のプレビュー (オーバービューを開いている間だけ存在する) を色の変更に追従させる
+    _syncPreviewsFor(win) {
+        if (!this._previews)
+            return;
+        for (const preview of this._previews) {
+            if (preview.metaWindow === win)
+                this._syncPreview(preview);
+        }
+    }
+
+    // ワークスペースサムネイル (オーバービュー上部) の小さなウィンドウに色枠を重ねる
+    _decorateWorkspaceClone(clone) {
+        if (!this._wsClones)
+            return;
+        this._wsClones.add(clone);
+        clone.connect('destroy', () => this._wsClones?.delete(clone));
+        this._syncWorkspaceClone(clone);
+    }
+
+    // scale 省略時は前回 setScale で渡された縮小率を使う (色だけ変わったとき)
+    _syncWorkspaceClone(clone, scale) {
+        if (scale > 0)
+            clone._wincolorScale = scale;
+
+        const hex = this._tags?.get(clone.metaWindow)?.hex;
+        if (!hex) {
+            clone._wincolorBorder?.destroy();
+            clone._wincolorBorder = null;
+            return;
+        }
+
+        if (!clone._wincolorBorder) {
+            const border = new St.Widget({reactive: false});
+            clone.add_child(border);
+            clone._wincolorBorder = border;
+        }
+
+        // クローンの原点はウィンドウアクタ (影を含む) の原点なので、枠はフレーム矩形に合わせる
+        const actor = clone.realWindow;
+        const rect = clone.metaWindow.get_frame_rect();
+        clone._wincolorBorder.set_position(rect.x - actor.x, rect.y - actor.y);
+        clone._wincolorBorder.set_size(rect.width, rect.height);
+
+        const s = clone._wincolorScale > 0 ? clone._wincolorScale : 1;
+        clone._wincolorBorder.set_style(
+            `border: ${Math.max(1, Math.round(WS_THUMB_BORDER_PX / s))}px solid ${hex}; ` +
+            `border-radius: ${Math.round(WS_THUMB_RADIUS_PX / s)}px;`);
+    }
+
+    _syncWorkspaceClonesFor(win) {
+        if (!this._wsClones)
+            return;
+        for (const clone of this._wsClones) {
+            if (clone.metaWindow === win)
+                this._syncWorkspaceClone(clone);
+        }
+    }
+
     _openMenuForFocused() {
         const win = global.display.focus_window;
         if (!win || win.is_skip_taskbar())
@@ -716,6 +948,8 @@ export default class WindowColorTagExtension extends Extension {
             existing.name = color.name;
             existing.hex = color.hex;
             this._applyStyle(existing);
+            this._syncPreviewsFor(win);
+            this._syncWorkspaceClonesFor(win);
             return;
         }
 
@@ -740,6 +974,8 @@ export default class WindowColorTagExtension extends Extension {
 
         sync();
         this._restackAll();
+        this._syncPreviewsFor(win);
+        this._syncWorkspaceClonesFor(win);
     }
 
     _removeTag(win) {
@@ -753,6 +989,8 @@ export default class WindowColorTagExtension extends Extension {
         tag.border.destroy();
         tag.tint.destroy();
         this._tags.delete(win);
+        this._syncPreviewsFor(win);
+        this._syncWorkspaceClonesFor(win);
     }
 
     _applyStyle(tag) {
