@@ -7,20 +7,26 @@
 ;   - ランチャー: wincolor.ahk run <色> <コマンド...> でアプリを起動し、その窓に色を付ける
 ;     (ショートカットのリンク先に設定すると「起動時に色を決めておく」が実現できる)
 ;
-; 着色は2系統を併用する:
+; 着色は3系統を併用する:
 ;   1. DWM API (DwmSetWindowAttribute) による枠・タイトルバー・文字色
 ;      → 標準タイトルバーのアプリ(PuTTY, TeraTerm, 多くのWin32アプリ)に有効
 ;   2. ウィンドウに追従するクリック透過のオーバーレイ色枠
 ;      → タイトルバー自前描画のアプリ(Explorer, Terminal, Chrome, 新メモ帳等)にも有効
+;   3. ウィンドウアイコン (WM_SETICON) を色タイル付きに差し替える
+;      → Alt+Tab 一覧やタスクバーなど、サムネイル(オーバーレイ枠が写らない)しか
+;        表示されない場面でも色で見分けられる
 #Requires AutoHotkey v2.0
 ; 常駐モードとランチャーモード(run 引数)を同じスクリプトで担うため、
 ; 単一インスタンス制御は手動で行う (ReplaceExistingResident)
 #SingleInstance Off
 
-WINCOLOR_VERSION := "1.1.0"
+WINCOLOR_VERSION := "1.2.0"
 RESIDENT_MARKER  := "wincolor_resident"   ; 常駐インスタンスの隠しウィンドウ識別タイトル
 AUTOSTART_ITEM   := "ログオン時に自動起動"  ; トレイメニュー項目名 (チェック状態の操作に使う)
+ICON_TAG_ITEM    := "Alt+Tab のアイコンにも色を付ける"
 WM_COPYDATA_MAGIC := 0x57434C31           ; 'WCL1'
+WM_WINCOLOR_QUIT  := 0x8057               ; WM_APP+0x57: 旧常駐へ「後片付けして終了」を依頼
+SETTINGS_PATH     := A_AppData "\wincolor\settings.ini"
 
 DWMWA_BORDER_COLOR  := 34
 DWMWA_CAPTION_COLOR := 35
@@ -34,10 +40,12 @@ CoordMode "Mouse", "Screen"
 A_IconHidden := true   ; ランチャーモードではトレイアイコンを出さない
 
 Presets := LoadPresets()
-Applied := Map()    ; hwnd -> {hex, gui, last}
+Applied := Map()    ; hwnd -> {hex, gui, last, icon}  icon: "" または {origBig, origSmall, tagBig, tagSmall, unsupported}
 IconCache := Map()  ; hex -> HBITMAP (メニューの色見本)
+ExeIconCache := Map() ; exe パス -> HICON (WM_GETICON もクラスアイコンも無い窓の代替元)
 RuleDone := Map()   ; hwnd -> true (手動・ルール問わず一度色を確定した窓。ルールが上書きしない)
 RuleTitles := Map() ; hwnd -> 最後に評価したタイトル (変化時のみ再評価)
+IconTagEnabled := IniRead(SETTINGS_PATH, "options", "iconTag", "1") = "1"
 
 ; ---------------------------------------------------------------- ランチャーモード
 ; wincolor.ahk run <色(プリセット名 or #RRGGBB)> <コマンド...>
@@ -51,6 +59,8 @@ DllCall("SetWindowText", "ptr", A_ScriptHwnd, "str", RESIDENT_MARKER)
 A_IconHidden := false
 Rules := LoadRules()
 OnMessage(0x4A, OnCopyData)   ; ランチャーからの着色依頼を受ける
+OnMessage(WM_WINCOLOR_QUIT, (*) => ExitApp())   ; 新しい常駐からの置き換え依頼
+OnExit(RestoreAllIcons)   ; 差し替えたアイコンは本プロセスの寿命と共に無効になるため、終了前に必ず戻す
 SetupTray()
 if Rules.Length
     SetTimer(RuleTick, 1000)
@@ -103,6 +113,8 @@ SetupTray() {
     tray.Add()
     tray.Add(AUTOSTART_ITEM, ToggleAutoStart)
     UpdateAutoStartCheck()
+    tray.Add(ICON_TAG_ITEM, ToggleIconTag)
+    UpdateIconTagCheck()
     tray.Add()
     tray.Add("使い方", ShowHelp)
     tray.Add("再読み込み", (*) => Reload())
@@ -203,12 +215,15 @@ ShowHelp(*) {
         "・またはトレイアイコン右クリック →「ウィンドウ一覧から着色…」`n"
         "・rules.json に自動ルール(タイトル/exe名 → 色)を書ける`n"
         "・ショートカット起動: wincolor.ahk run <色> <コマンド>`n"
-        "・トレイメニュー「ログオン時に自動起動」で自動起動を ON/OFF`n`n"
+        "・トレイメニュー「ログオン時に自動起動」で自動起動を ON/OFF`n"
+        "・「Alt+Tab のアイコンにも色を付ける」で、Alt+Tab 一覧やタスクバーに`n"
+        "  出るウィンドウアイコンを色タイル付きに差し替える(ON/OFF 可)`n`n"
         "■ 注意`n"
         "・Windows 11 専用(DWM API を使用)`n"
         "・色はウィンドウを閉じるまで有効(アプリ再起動で戻ります)`n"
         "・Explorer / Terminal / Chrome などタイトルバー自前描画のアプリは`n"
         "  タイトルバー色が効かないため、周囲のオーバーレイ色枠で識別します`n"
+        "・Alt+Tab のサムネイルにはオーバーレイ枠は写りません(アイコンの色で識別)`n"
         "・管理者権限のウィンドウには、本ツールも管理者で実行しないと効きません",
         "wincolor v" WINCOLOR_VERSION " - 使い方")
 }
@@ -237,12 +252,17 @@ ApplyColorTo(hwnd, hex, textHex) {
     SetAttr(hwnd, DWMWA_BORDER_COLOR, c)
     SetAttr(hwnd, DWMWA_TEXT_COLOR, HexToColorref(textHex))
     ; 2. オーバーレイ枠 (全アプリ共通の識別マーク)
-    if Applied.Has(hwnd)
-        Applied[hwnd].gui.Destroy()
-    rec := {hex: StrReplace(hex, "#"), gui: MakeFrame(StrReplace(hex, "#")), last: ""}
+    ; 再着色時は元アイコンの記録を引き継ぐ(今の窓アイコンは既に差し替え済みのもの)
+    old := Applied.Has(hwnd) ? Applied[hwnd] : ""
+    if old
+        old.gui.Destroy()
+    rec := {hex: StrReplace(hex, "#"), gui: MakeFrame(StrReplace(hex, "#")), last: "", icon: old ? old.icon : ""}
     Applied[hwnd] := rec
     RuleDone[hwnd] := true   ; 一度色を確定した窓には自動ルールを適用しない
     UpdateFrame(hwnd, rec)
+    ; 3. ウィンドウアイコン (Alt+Tab・タスクバー用)
+    if IconTagEnabled
+        TagIcon(hwnd, rec)
     SetTimer(FrameTick, 50)
 }
 
@@ -250,6 +270,7 @@ ResetWindow(hwnd, *) {
     for attr in [DWMWA_CAPTION_COLOR, DWMWA_BORDER_COLOR, DWMWA_TEXT_COLOR]
         SetAttr(hwnd, attr, DWMWA_COLOR_DEFAULT)
     if Applied.Has(hwnd) {
+        RestoreIcon(hwnd, Applied[hwnd])
         Applied[hwnd].gui.Destroy()
         Applied.Delete(hwnd)
     }
@@ -284,17 +305,22 @@ IsOwnFrame(hwnd) {
 }
 
 FrameTick() {
+    static n := 0
     if Applied.Count = 0 {
         SetTimer(FrameTick, 0)
         return
     }
     for hwnd, rec in Applied.Clone()
         UpdateFrame(hwnd, rec)
+    ; アイコンの再確認は 10 tick(約 0.5 秒)ごと
+    if IconTagEnabled && Mod(++n, 10) = 0
+        CheckIcons()
 }
 
 UpdateFrame(hwnd, rec) {
     if !WinExist("ahk_id " hwnd) {
         rec.gui.Destroy()
+        DropTagIcons(rec)   ; 窓は消えているので戻し先はない。ハンドルだけ解放
         Applied.Delete(hwnd)
         return
     }
@@ -359,6 +385,190 @@ SetFrameRegion(hwnd, w, h, t, rounded := true) {
     DllCall("SetWindowRgn", "ptr", hwnd, "ptr", outer, "int", 1)  ; リージョンの所有権はOSへ移る
 }
 
+; ---------------------------------------------------------------- ウィンドウアイコンの色タイル (Alt+Tab・タスクバー用)
+;
+; Alt+Tab 一覧のサムネイルは DWM が対象窓だけを縮小描画するため、別窓であるオーバーレイ枠は写らない。
+; 一覧上のサムネイル位置を UI Automation で取って枠を重ねる案は、Windows 11 24H2 では
+; スイッチャーの XAML 要素が「explorer 起動後の最初の表示」にしか公開されないため成立しなかった。
+; 代わりに、一覧の各項目(とタスクバー)に出るウィンドウアイコンを WM_SETICON で
+; 「色タイルの上に元アイコンを縮小して載せたもの」に差し替える。実測で Explorer / Windows Terminal
+; (パッケージアプリ) / Chrome / Electron のいずれも一覧に反映されることを確認済み。
+; 差し替えた HICON は本プロセスが所有するため、既定に戻す時・終了時に必ず元へ戻す。
+
+UpdateIconTagCheck() {
+    if IconTagEnabled
+        A_TrayMenu.Check(ICON_TAG_ITEM)
+    else
+        A_TrayMenu.Uncheck(ICON_TAG_ITEM)
+}
+
+ToggleIconTag(*) {
+    global IconTagEnabled
+    IconTagEnabled := !IconTagEnabled
+    try {
+        DirCreate(A_AppData "\wincolor")
+        IniWrite(IconTagEnabled ? "1" : "0", SETTINGS_PATH, "options", "iconTag")
+    }
+    UpdateIconTagCheck()
+    for hwnd, rec in Applied.Clone() {
+        if IconTagEnabled
+            TagIcon(hwnd, rec)
+        else
+            RestoreIcon(hwnd, rec)
+    }
+}
+
+; 対象窓のアイコンを色タイル付きに差し替える(初回は元アイコンを記録)
+TagIcon(hwnd, rec) {
+    if rec.icon = "" {
+        rec.icon := {origBig: GetWinIcon(hwnd, 1), origSmall: GetWinIcon(hwnd, 0), tagBig: 0, tagSmall: 0, unsupported: false}
+    } else if rec.icon.unsupported {
+        return
+    }
+    ic := rec.icon
+    base := BaseIcon(hwnd, ic)
+    newBig := MakeTagIcon(rec.hex, base, SysGet(11))     ; SM_CXICON
+    newSmall := MakeTagIcon(rec.hex, base, SysGet(49))   ; SM_CXSMICON
+    SetWinIcon(hwnd, 1, newBig)
+    SetWinIcon(hwnd, 0, newSmall)
+    ; 自前で WM_GETICON に応答して差し替えを無視するアプリは諦める(毎回付け直す無駄を避ける)
+    if GetWinIcon(hwnd, 1, &ok) != newBig && ok {
+        SetWinIcon(hwnd, 1, ic.origBig)
+        SetWinIcon(hwnd, 0, ic.origSmall)
+        DllCall("DestroyIcon", "ptr", newBig), DllCall("DestroyIcon", "ptr", newSmall)
+        ic.unsupported := true
+        return
+    }
+    DropTagIcons(rec)   ; 旧タイルは窓から外れた後に解放
+    ic.tagBig := newBig, ic.tagSmall := newSmall
+}
+
+; 元のアイコンに戻し、タイルを解放する。rec.icon は空に戻す(再度 ON にした時に現状を取り直す)
+RestoreIcon(hwnd, rec) {
+    if rec.icon = ""
+        return
+    ic := rec.icon
+    if !ic.unsupported && WinExist("ahk_id " hwnd) {
+        SetWinIcon(hwnd, 1, ic.origBig)
+        SetWinIcon(hwnd, 0, ic.origSmall)
+    }
+    DropTagIcons(rec)
+    rec.icon := ""
+}
+
+DropTagIcons(rec) {
+    if rec.icon = ""
+        return
+    if rec.icon.tagBig
+        DllCall("DestroyIcon", "ptr", rec.icon.tagBig)
+    if rec.icon.tagSmall
+        DllCall("DestroyIcon", "ptr", rec.icon.tagSmall)
+    rec.icon.tagBig := 0, rec.icon.tagSmall := 0
+}
+
+RestoreAllIcons(*) {
+    for hwnd, rec in Applied.Clone()
+        RestoreIcon(hwnd, rec)
+}
+
+; アプリ側がアイコンを変えた(Explorer のフォルダー移動、Chrome のプロファイル変更など)ら、
+; それを新しい「元」として取り直し、タイルを作り直す
+CheckIcons() {
+    for hwnd, rec in Applied.Clone() {
+        if rec.icon = "" || rec.icon.unsupported || !WinExist("ahk_id " hwnd)
+            continue
+        cur := GetWinIcon(hwnd, 1, &ok)
+        if !ok || cur = rec.icon.tagBig
+            continue
+        rec.icon.origBig := cur
+        rec.icon.origSmall := GetWinIcon(hwnd, 0)
+        TagIcon(hwnd, rec)
+    }
+}
+
+; タイルに載せる元アイコン。WM_GETICON → クラスアイコン → exe のアイコン → 既定アプリアイコン の順
+BaseIcon(hwnd, ic) {
+    if ic.origBig
+        return ic.origBig
+    if ic.origSmall
+        return ic.origSmall
+    h := DllCall("GetClassLongPtr", "ptr", hwnd, "int", -14, "ptr")   ; GCLP_HICON
+    if !h
+        h := DllCall("GetClassLongPtr", "ptr", hwnd, "int", -34, "ptr")   ; GCLP_HICONSM
+    if h
+        return h
+    path := ""
+    try path := WinGetProcessPath("ahk_id " hwnd)
+    if path != "" {
+        if !ExeIconCache.Has(path) {
+            hi := 0, id := 0
+            DllCall("PrivateExtractIconsW", "str", path, "int", 0, "int", 32, "int", 32, "ptr*", &hi, "uint*", &id, "uint", 1, "uint", 0)
+            ExeIconCache[path] := hi
+        }
+        if ExeIconCache[path]
+            return ExeIconCache[path]
+    }
+    return DllCall("LoadIcon", "ptr", 0, "ptr", 32512, "ptr")   ; IDI_APPLICATION
+}
+
+; WM_GETICON。応答しない窓(ハング中)は ok=false で 0 を返す
+GetWinIcon(hwnd, which, &ok := false) {
+    r := 0
+    ok := DllCall("SendMessageTimeoutW", "ptr", hwnd, "uint", 0x7F, "ptr", which, "ptr", 0, "uint", 2, "uint", 300, "ptr*", &r) != 0  ; SMTO_ABORTIFHUNG
+    return ok ? r : 0
+}
+
+SetWinIcon(hwnd, which, hicon) {
+    r := 0
+    DllCall("SendMessageTimeoutW", "ptr", hwnd, "uint", 0x80, "ptr", which, "ptr", hicon, "uint", 2, "uint", 300, "ptr*", &r)
+}
+
+; 色タイル(size×size、外周 size/8 が色)の上に元アイコンを縮小して載せた HICON を作る。
+; 4 倍の作業解像度で描いてから HALFTONE で縮小し、ギザギザを避ける。結果は全画素不透明
+MakeTagIcon(hexRGB, hBase, size) {
+    t := Max(2, Round(size / 8))
+    N := size * 4, tN := t * 4
+    hdc := DllCall("GetDC", "ptr", 0, "ptr")
+    work := CreateDIB32(hdc, N, &wbits)
+    wdc := DllCall("CreateCompatibleDC", "ptr", hdc, "ptr")
+    DllCall("SelectObject", "ptr", wdc, "ptr", work, "ptr")
+    br := DllCall("CreateSolidBrush", "uint", HexToColorref(hexRGB), "ptr")
+    rect := Buffer(16, 0)
+    NumPut("int", N, rect, 8), NumPut("int", N, rect, 12)
+    DllCall("FillRect", "ptr", wdc, "ptr", rect, "ptr", br)
+    DllCall("DeleteObject", "ptr", br)
+    if hBase
+        DllCall("DrawIconEx", "ptr", wdc, "int", tN, "int", tN, "ptr", hBase, "int", N - 2 * tN, "int", N - 2 * tN, "uint", 0, "ptr", 0, "uint", 3)  ; DI_NORMAL
+    out := CreateDIB32(hdc, size, &obits)
+    odc := DllCall("CreateCompatibleDC", "ptr", hdc, "ptr")
+    DllCall("SelectObject", "ptr", odc, "ptr", out, "ptr")
+    DllCall("SetStretchBltMode", "ptr", odc, "int", 4)   ; HALFTONE
+    DllCall("SetBrushOrgEx", "ptr", odc, "int", 0, "int", 0, "ptr", 0)
+    DllCall("StretchBlt", "ptr", odc, "int", 0, "int", 0, "int", size, "int", size,
+            "ptr", wdc, "int", 0, "int", 0, "int", N, "int", N, "uint", 0x00CC0020)   ; SRCCOPY
+    loop size * size
+        NumPut("uchar", 0xFF, obits, (A_Index - 1) * 4 + 3)   ; α を不透明に
+    maskBits := Buffer(((size + 15) // 16) * 2 * size, 0)     ; 全 0 = 全画素表示
+    mask := DllCall("CreateBitmap", "int", size, "int", size, "uint", 1, "uint", 1, "ptr", maskBits, "ptr")
+    ii := Buffer(32, 0)                 ; ICONINFO (x64)
+    NumPut("int", 1, ii, 0)             ; fIcon
+    NumPut("ptr", mask, ii, 16), NumPut("ptr", out, ii, 24)
+    hicon := DllCall("CreateIconIndirect", "ptr", ii, "ptr")
+    DllCall("DeleteDC", "ptr", wdc), DllCall("DeleteDC", "ptr", odc)
+    DllCall("DeleteObject", "ptr", work), DllCall("DeleteObject", "ptr", out), DllCall("DeleteObject", "ptr", mask)
+    DllCall("ReleaseDC", "ptr", 0, "ptr", hdc)
+    return hicon
+}
+
+; 32bpp トップダウン DIB。bits に画素の先頭アドレスを返す
+CreateDIB32(hdc, size, &bits) {
+    bi := Buffer(40, 0)
+    NumPut("uint", 40, bi, 0), NumPut("int", size, bi, 4), NumPut("int", -size, bi, 8)
+    NumPut("ushort", 1, bi, 12), NumPut("ushort", 32, bi, 14)
+    bits := 0
+    return DllCall("CreateDIBSection", "ptr", hdc, "ptr", bi, "uint", 0, "ptr*", &bits, "ptr", 0, "uint", 0, "ptr")
+}
+
 ; メニュー用の色見本ビットマップ(角丸風の塗り+薄いグレー枠)。hex 単位でキャッシュする
 GetColorIcon(hex) {
     global IconCache
@@ -416,8 +626,12 @@ ReplaceExistingResident() {
         pid := 0
         DllCall("GetWindowThreadProcessId", "ptr", hwnd, "uint*", &pid)
         if pid && pid != DllCall("GetCurrentProcessId") {
-            ProcessClose(pid)
-            ProcessWaitClose(pid, 3)
+            ; まず終了を依頼し(OnExit で差し替えたアイコンを元に戻させる)、応じなければ強制終了
+            DllCall("PostMessage", "ptr", hwnd, "uint", WM_WINCOLOR_QUIT, "ptr", 0, "ptr", 0)
+            if ProcessWaitClose(pid, 3) {   ; 戻り値は「まだ生きていれば PID、終了していれば 0」
+                ProcessClose(pid)
+                ProcessWaitClose(pid, 3)
+            }
         } else {
             break
         }

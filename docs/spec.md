@@ -49,6 +49,27 @@
    さらに Electron 系アプリは最外周 1px が半透明(角丸AA用)で背景が透けるため、
    枠を 1px 窓の内側に重ねて覆う
 
+#### Alt+Tab 一覧への反映(実測: Windows 11 24H2, build 26100)
+- Alt+Tab のサムネイルは DWM が対象窓だけを縮小描画するため、別窓のオーバーレイ枠は写らない。
+  DWM のキャプション色はサムネイルにも出るが、自前描画アプリでは元々効かない
+- **不採用案: UI Automation でサムネイル位置を取り、一覧の上に枠を重ねる**。
+  スイッチャー窓(class `XamlExplorerHostIslandWindow`、title「タスクの切り替え」、
+  explorer.exe)は UIA で `ListView`(AutomationId `SwitchItemListControl`)と、窓タイトルを
+  Name に持つ `ListViewItem` + 矩形を公開する **が、explorer 起動後の最初の表示のときだけ**。
+  2 回目以降は子が `Windows.UI.Input.InputSite.WindowClass` 1 つになり、FindAll /
+  RawViewWalker / ElementFromPoint / GetFocusedElement のいずれでも項目に届かない
+  (UIA イベント購読中のクライアントがいても、実キー入力でも同じ)。
+  表示/非表示自体は `EVENT_OBJECT_SHOW/HIDE`(SetWinEventHook)で確実に取れる
+- **採用: ウィンドウアイコンの差し替え**。`WM_SETICON`(ICON_BIG / ICON_SMALL)で
+  「色タイル + 元アイコン縮小」の HICON を設定すると、Alt+Tab の各項目のアイコンが変わる。
+  Explorer / Windows Terminal(パッケージアプリ)/ Chrome / Electron(Typora)で反映を確認。
+  他プロセスの窓に自プロセスの HICON を渡してよい(USER オブジェクトはセッション内で共有)が、
+  自プロセス終了で無効になるため、終了・既定に戻す時に元の HICON(`WM_GETICON` の値、無ければ 0)
+  を戻す。置き換え起動時は旧常駐に WM_APP+0x57 を送って自ら終了させ、OnExit で戻させる
+- タイルは 4 倍の作業解像度に描いてから HALFTONE で縮小(ギザギザ防止)。元アイコンは
+  `WM_GETICON` → クラスアイコン → exe のアイコン(`PrivateExtractIconsW`)→ IDI_APPLICATION の順
+- `WM_GETICON` に自前応答して差し替えを無視するアプリは、設定直後の読み戻しで検出して諦める
+
 ### macOS (macos/)
 - 他アプリのタイトルバー色を変える公開 API はない
 - **Swift のメニューバー常駐アプリ + CLI** として実装(単一バイナリ `wincolor`。引数なしで常駐、

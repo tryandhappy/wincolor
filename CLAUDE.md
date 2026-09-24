@@ -51,10 +51,17 @@
 ## Windows版の開発メモ
 
 - 構文チェック: `AutoHotkey64.exe /ErrorStdOut /validate windows\wincolor.ahk`(exit 0 で成功)
+  - AutoHotkey の起動は **PowerShell から**行う。Git Bash は `/ErrorStdOut` 等のスイッチを
+    パスに変換してしまい、AutoHotkey がスクリプト名と誤認してダイアログを出したまま止まる
+- 実窓を巻き込む検証(Alt+Tab の送信など)は、必ず `OnExit` で修飾キーを離す・数秒で自動終了する
+  安全弁を入れた使い捨てスクリプトで行う(固まると Alt が押下されたままになる)
+- Alt+Tab 一覧のサムネイルにはオーバーレイ枠は写らない。一覧上での識別はウィンドウアイコンの
+  差し替え(WM_SETICON)で行う。UIA でサムネイル位置を取る案は不成立(詳細は docs/spec.md)
 - 動作確認は実ウィンドウに適用し、境界ピクセルの実測(GetPixel)で検証してきた。
   勘に頼らず必ず実測すること(隙間問題は「影」「リージョン排他座標」「アプリの半透明1px境界」
   の3要因が重なっていた。詳細は docs/spec.md)
-- 本体はタスクトレイ常駐。再起動は同スクリプトの再実行(`#SingleInstance Force` で置き換わる)。
+- 本体はタスクトレイ常駐。再起動は同スクリプトの再実行(ReplaceExistingResident が旧常駐に
+  WM_APP+0x57 を送って終了させる。応じない旧版は強制終了)。
   再起動するとオーバーレイ枠は消えるため、ユーザーに再着色を依頼する
 - ローカルで exe 版を作って自動起動に使う手順(MSI を使わずに開発機へ配置する場合):
   1. 一時ディレクトリに `windows/wincolor.ahk`、`shared/colors.json`、`shared/rules.json` をコピー
