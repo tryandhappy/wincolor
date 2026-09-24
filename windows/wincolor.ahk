@@ -1,7 +1,7 @@
 ; wincolor - ウィンドウ単位で色を付けて見分けるツール (Windows版)
 ; 要件: Windows 11 (build 22000+), AutoHotkey v2
 ; 使い方:
-;   - 任意のウィンドウのタイトルバーを Ctrl+右クリック、または右ボタン長押し → 色メニュー
+;   - 任意のウィンドウのタイトルバーを右クリック → 標準メニュー(の複製)の下に色が並ぶ
 ;   - タスクトレイアイコンのメニュー「ウィンドウ一覧から着色…」でも選択可
 ;   - 自動ルール: rules.json に「タイトル/exe名の正規表現 → 色」を書くと新しいウィンドウに自動適用
 ;   - ランチャー: wincolor.ahk run <色> <コマンド...> でアプリを起動し、その窓に色を付ける
@@ -34,7 +34,6 @@ DWMWA_TEXT_COLOR    := 36
 DWMWA_COLOR_DEFAULT := 0xFFFFFFFF
 
 FRAME_THICKNESS := 3   ; オーバーレイ枠の太さ(px)
-LONG_PRESS_SEC  := 0.4 ; タイトルバー右ボタン長押しの判定秒数
 
 CoordMode "Mouse", "Screen"
 A_IconHidden := true   ; ランチャーモードではトレイアイコンを出さない
@@ -67,27 +66,18 @@ if Rules.Length
 
 ; ---------------------------------------------------------------- ホットキー
 
-; タイトルバー上でのみ介入する(それ以外は通常動作)
+; タイトルバー上でのみ介入する(それ以外は通常動作)。
+; 右クリック → 標準のシステムメニューを複製し、その下に色プリセットを並べた自前メニューを出す。
+; 標準メニューは WM_NCRBUTTONDOWN でキャプチャを取り WM_NCRBUTTONUP で表示されるので、
+; ダウンだけ横取りすれば二重には出ない(アップは透過させる。アップまで抑止すると
+; KeyWait が物理的な離しを検知できず固まることがあった)
 #HotIf MouseOverCaption()
-^RButton:: {
-    MouseGetPos , , &hwnd
-    if hwnd
-        ShowColorMenu(hwnd)
-}
-
-; 右ボタン長押しで色メニュー。短く押せば通常の右クリックとして透過
+^RButton::
 $RButton:: {
     MouseGetPos , , &hwnd
-    if !hwnd
-        return
-    if KeyWait("RButton", "T" LONG_PRESS_SEC) {
-        ; 判定時間内に離された → 通常の右クリックを再送($ により再トリガーしない)
-        Send "{Blind}{Click Right}"
-    } else {
-        ; 長押し → ボタンが離されてからメニュー表示(離した瞬間の誤選択を防ぐ)
-        KeyWait "RButton"
-        ShowColorMenu(hwnd)
-    }
+    KeyWait "RButton", "T1"     ; 離してから表示(離した瞬間の誤選択を防ぐ)。1秒で諦めて表示
+    if hwnd
+        ShowCaptionMenu(hwnd)
 }
 #HotIf
 
@@ -189,6 +179,7 @@ ShowWindowList(*) {
     m.Show()
 }
 
+; トレイの「ウィンドウ一覧から着色…」用: 窓タイトルを見出しにした色メニュー
 ShowColorMenu(hwnd, *) {
     if !WinExist("ahk_id " hwnd)
         return
@@ -197,6 +188,22 @@ ShowColorMenu(hwnd, *) {
     m.Add(title = "" ? "(無題)" : EscapeMenuText(title), (*) => 0)
     m.Disable("1&")
     m.Add()
+    AddColorItems(m, hwnd)
+    m.Show()
+}
+
+; タイトルバー右クリック用: 標準のシステムメニューを複製し、その下に色プリセットを並べる
+ShowCaptionMenu(hwnd) {
+    if !WinExist("ahk_id " hwnd)
+        return
+    m := Menu()
+    if CopySystemMenu(m, hwnd)
+        m.Add()
+    AddColorItems(m, hwnd)
+    m.Show()
+}
+
+AddColorItems(m, hwnd) {
     for p in Presets {
         m.Add(p.label, ApplyPreset.Bind(hwnd, p))
         m.SetIcon(p.label, "HBITMAP:*" GetColorIcon(p.hex))
@@ -204,14 +211,83 @@ ShowColorMenu(hwnd, *) {
     m.Add()
     m.Add("カスタム色…", ApplyCustom.Bind(hwnd))
     m.Add("既定に戻す", ResetWindow.Bind(hwnd))
-    m.Show()
+}
+
+; 対象窓のシステムメニュー(GetSystemMenu)の項目を m に写す。戻り値: 写した項目数
+; 文字列・ID・チェック/既定状態・標準グリフ(hbmpItem)・アプリ独自の追加項目(Terminal の「設定」等)を
+; そのまま持ち込み、選ばれたら WM_SYSCOMMAND を対象窓に送る。
+; 「元のサイズに戻す/移動/サイズ変更/最小化/最大化」の有効・無効は Windows が表示時に決めるものなので、
+; メニューに残っている状態ではなく窓の現状から決める
+CopySystemMenu(m, hwnd) {
+    hSys := DllCall("GetSystemMenu", "ptr", hwnd, "int", 0, "ptr")
+    if !hSys
+        return 0
+    ; アプリ独自項目の状態更新の機会を与える(標準メニュー表示時と同じ通知)
+    try SendMessage(0x0116, hSys, 0, , "ahk_id " hwnd, , , , 300)            ; WM_INITMENU
+    try SendMessage(0x0117, hSys, 1 << 16, , "ahk_id " hwnd, , , , 300)      ; WM_INITMENUPOPUP (HIWORD=1: ウィンドウメニュー)
+    mm := WinGetMinMax("ahk_id " hwnd)
+    style := WinGetStyle("ahk_id " hwnd)
+    n := DllCall("GetMenuItemCount", "ptr", hSys)
+    added := 0, pendingSep := false
+    loop n {
+        buf := Buffer(1024, 0)
+        mii := Buffer(80, 0)   ; MENUITEMINFOW (x64)
+        NumPut("uint", 80, mii, 0)
+        NumPut("uint", 0x1 | 0x2 | 0x4 | 0x40 | 0x80 | 0x100, mii, 4)   ; STATE|ID|SUBMENU|STRING|BITMAP|FTYPE
+        NumPut("ptr", buf.Ptr, mii, 56), NumPut("uint", 511, mii, 64)    ; dwTypeData / cch
+        if !DllCall("GetMenuItemInfoW", "ptr", hSys, "uint", A_Index - 1, "int", 1, "ptr", mii)
+            continue
+        fType := NumGet(mii, 8, "uint"), state := NumGet(mii, 12, "uint"), id := NumGet(mii, 16, "uint")
+        hSub := NumGet(mii, 24, "ptr"), hbmp := NumGet(mii, 72, "ptr")
+        if fType & 0x800 {   ; MFT_SEPARATOR: 先頭や連続の区切りは出さない
+            pendingSep := added > 0
+            continue
+        }
+        text := StrGet(buf, "UTF-16")
+        if hSub || text = ""
+            continue
+        if pendingSep
+            m.Add(), pendingSep := false
+        m.Add(text, SysCommand.Bind(hwnd, id))
+        added++
+        pos := DllCall("GetMenuItemCount", "ptr", m.Handle) "&"
+        disabled := (state & 0x3) != 0   ; MFS_GRAYED / MFS_DISABLED
+        switch id & 0xFFF0 {
+            case 0xF120: disabled := mm = 0                                   ; SC_RESTORE
+            case 0xF010: disabled := mm != 0                                  ; SC_MOVE
+            case 0xF000: disabled := mm != 0 || !(style & 0x40000)            ; SC_SIZE (WS_THICKFRAME)
+            case 0xF020: disabled := mm = -1 || !(style & 0x20000)            ; SC_MINIMIZE (WS_MINIMIZEBOX)
+            case 0xF030: disabled := mm = 1 || !(style & 0x10000)             ; SC_MAXIMIZE (WS_MAXIMIZEBOX)
+        }
+        if disabled
+            m.Disable(pos)
+        if state & 0x8       ; MFS_CHECKED
+            m.Check(pos)
+        if state & 0x1000    ; MFS_DEFAULT
+            m.Default := pos
+        if hbmp {            ; 標準グリフ(HBMMENU_POPUP_*)やアプリのビットマップをそのまま使う
+            bm := Buffer(80, 0)
+            NumPut("uint", 80, bm, 0), NumPut("uint", 0x80, bm, 4), NumPut("ptr", hbmp, bm, 72)
+            DllCall("SetMenuItemInfoW", "ptr", m.Handle, "uint", DllCall("GetMenuItemCount", "ptr", m.Handle) - 1, "int", 1, "ptr", bm)
+        }
+    }
+    return added
+}
+
+; 複製したシステムメニューの項目が選ばれた → 対象窓に WM_SYSCOMMAND。
+; ID の下位 4bit はヒットテストコードで、メニュー由来は 0(移動/サイズ変更はキーボード式のモードに入る)
+SysCommand(hwnd, id, *) {
+    if !WinExist("ahk_id " hwnd)
+        return
+    MouseGetPos &x, &y
+    PostMessage(0x0112, id, ((y & 0xFFFF) << 16) | (x & 0xFFFF), , "ahk_id " hwnd)
 }
 
 ShowHelp(*) {
     MsgBox(
         "■ 使い方`n"
-        "・ウィンドウのタイトルバーを Ctrl+右クリック、`n"
-        "  または右ボタン長押し(0.4秒) → 色を選択`n"
+        "・ウィンドウのタイトルバーを右クリック → 標準メニューの下に`n"
+        "  並んだ色を選択(Ctrl+右クリックでも同じ)`n"
         "・またはトレイアイコン右クリック →「ウィンドウ一覧から着色…」`n"
         "・rules.json に自動ルール(タイトル/exe名 → 色)を書ける`n"
         "・ショートカット起動: wincolor.ahk run <色> <コマンド>`n"
