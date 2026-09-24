@@ -56,3 +56,12 @@
   の3要因が重なっていた。詳細は docs/spec.md)
 - 本体はタスクトレイ常駐。再起動は同スクリプトの再実行(`#SingleInstance Force` で置き換わる)。
   再起動するとオーバーレイ枠は消えるため、ユーザーに再着色を依頼する
+- ローカルで exe 版を作って自動起動に使う手順(MSI を使わずに開発機へ配置する場合):
+  1. 一時ディレクトリに `windows/wincolor.ahk`、`shared/colors.json`、`shared/rules.json` をコピー
+  2. `"C:\Program Files\AutoHotkey\Compiler\Ahk2Exe.exe" /silent verbose /in <一時>\wincolor.ahk /out <一時>\wincolor.exe /base "C:\Program Files\AutoHotkey2\AutoHotkey64.exe"`
+     でコンパイル(exit 0 と wincolor.exe の生成を確認)
+  3. 常駐中の wincolor(AutoHotkey64.exe でソース実行中のものや旧 exe)を終了してから、
+     exe と colors.json、rules.json を MSI と同じ `%LocalAppData%\Programs\wincolor` にコピー
+  4. スタートアップフォルダ(`shell:startup`)に `wincolor.lnk` を作成し、参照先を上記 exe、
+     作業フォルダを同ディレクトリにする(トレイメニュー「ログオン時に自動起動」はこの lnk の有無を見る)
+  5. exe を起動し、`Get-Process wincolor` で動作を確認。ソースを更新したら同じ手順で exe を上書きする
