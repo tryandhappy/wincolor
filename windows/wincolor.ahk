@@ -68,6 +68,8 @@ if Rules.Length
 
 ; タイトルバー上でのみ介入する(それ以外は通常動作)。
 ; 右クリック → 標準のシステムメニューを複製し、その下に色プリセットを並べた自前メニューを出す。
+; タスクバー等のシェル窓は WM_NCHITTEST に HTCAPTION を返すことがある(Windows 11 のサブモニタの
+; タスクバー Shell_SecondaryTrayWnd は全域で HTCAPTION)ため、クラス名で除外して標準メニューに任せる。
 ; 標準メニューは WM_NCRBUTTONDOWN でキャプチャを取り WM_NCRBUTTONUP で表示されるので、
 ; ダウンだけ横取りすれば二重には出ない(アップは透過させる。アップまで抑止すると
 ; KeyWait が物理的な離しを検知できず固まることがあった)
@@ -83,12 +85,20 @@ $RButton:: {
 MouseOverCaption() {
     CoordMode "Mouse", "Screen"
     MouseGetPos &x, &y, &hwnd
-    if !hwnd
+    if !hwnd || IsShellWindow(hwnd)
         return false
     try hit := SendMessage(0x0084, 0, ((y & 0xFFFF) << 16) | (x & 0xFFFF), , "ahk_id " hwnd, , , , 200)  ; WM_NCHITTEST
     catch
         return false
     return hit = 2  ; HTCAPTION
+}
+
+; タスクバー・デスクトップなどシェルの窓。着色対象にもタイトルバー右クリックの対象にもしない
+IsShellWindow(hwnd) {
+    try cls := WinGetClass("ahk_id " hwnd)
+    catch
+        return false
+    return cls ~= "^(Progman|WorkerW|Shell_TrayWnd|Shell_SecondaryTrayWnd)$"
 }
 
 ; ---------------------------------------------------------------- メニュー
@@ -165,8 +175,7 @@ ShowWindowList(*) {
         title := WinGetTitle("ahk_id " hwnd)
         if title = ""
             continue
-        cls := WinGetClass("ahk_id " hwnd)
-        if cls ~= "^(Progman|Shell_TrayWnd|Shell_SecondaryTrayWnd)$"
+        if IsShellWindow(hwnd)
             continue
         if IsCloaked(hwnd)
             continue

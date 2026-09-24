@@ -41,6 +41,11 @@
 - このため DWM 色に加えて**オーバーレイ色枠**(クリック透過・50ms 追従)を常に併用する。
   最大化時は枠を内側に描く
 - 実装言語: AutoHotkey v2
+- タイトルバー右クリックの判定は `WM_NCHITTEST` = HTCAPTION だが、**シェルの窓もこれを返す**
+  (実測: Windows 11 build 26100 でサブモニタのタスクバー `Shell_SecondaryTrayWnd` は全域で
+  HTCAPTION、主モニタの `Shell_TrayWnd` は HTCLIENT)。そのままだと右クリックを横取りして
+  色だけのメニューが出るため、Progman / WorkerW / Shell_TrayWnd / Shell_SecondaryTrayWnd は
+  クラス名で除外する
 
 #### オーバーレイ枠の実装上の要点(実測で判明した3つの落とし穴)
 1. **四隅の隙間**: Win11 の窓は角丸(半径約8px)。枠のリージョンも角丸にしないと
