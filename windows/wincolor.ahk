@@ -72,7 +72,6 @@ if Rules.Length
 ; ダウンだけ横取りすれば二重には出ない(アップは透過させる。アップまで抑止すると
 ; KeyWait が物理的な離しを検知できず固まることがあった)
 #HotIf MouseOverCaption()
-^RButton::
 $RButton:: {
     MouseGetPos , , &hwnd
     KeyWait "RButton", "T1"     ; 離してから表示(離した瞬間の誤選択を防ぐ)。1秒で諦めて表示
@@ -287,7 +286,7 @@ ShowHelp(*) {
     MsgBox(
         "■ 使い方`n"
         "・ウィンドウのタイトルバーを右クリック → 標準メニューの下に`n"
-        "  並んだ色を選択(Ctrl+右クリックでも同じ)`n"
+        "  並んだ色を選択`n"
         "・またはトレイアイコン右クリック →「ウィンドウ一覧から着色…」`n"
         "・rules.json に自動ルール(タイトル/exe名 → 色)を書ける`n"
         "・ショートカット起動: wincolor.ahk run <色> <コマンド>`n"
