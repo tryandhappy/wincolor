@@ -37,6 +37,38 @@ Releases の `wincolor-windows-vX.Y.Z.zip` を展開して `wincolor.exe` を実
 & "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe" .\wincolor.ahk
 ```
 
+### ソースから exe を作って配置する(Releases を使わない場合)
+
+AutoHotkey v2 に同梱の Ahk2Exe でコンパイルし、MSI と同じ場所に置く。
+以下はリポジトリのルートで PowerShell を開いて実行する例:
+
+```powershell
+$dst = "$env:LOCALAPPDATA\Programs\wincolor"
+$build = Join-Path $env:TEMP "wincolor-build"
+New-Item -ItemType Directory -Force $dst, $build | Out-Null
+
+# 1. ソースと設定ファイルを一時フォルダにまとめる
+Copy-Item windows\wincolor.ahk, shared\colors.json, shared\rules.json $build
+
+# 2. コンパイル (exit 0 なら成功)
+& "C:\Program Files\AutoHotkey\Compiler\Ahk2Exe.exe" /silent verbose `
+    /in "$build\wincolor.ahk" /out "$build\wincolor.exe" `
+    /base "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
+
+# 3. 常駐中の wincolor を止めてから配置 (旧 exe / ソース実行中のもの両方)
+Get-Process wincolor -ErrorAction SilentlyContinue | Stop-Process
+Get-CimInstance Win32_Process -Filter "Name='AutoHotkey64.exe'" |
+    Where-Object { $_.CommandLine -match 'wincolor\.ahk' } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId }
+Copy-Item "$build\wincolor.exe", "$build\colors.json", "$build\rules.json" $dst -Force
+
+# 4. 起動
+Start-Process "$dst\wincolor.exe" -WorkingDirectory $dst
+```
+
+配置後は下の「自動起動」の手順でログオン時に起動するようにする。
+ソースを更新したら同じコマンドを再実行して exe を上書きする(再起動でオーバーレイ枠は消えるので再着色する)。
+
 ## 使い方
 
 - 任意のウィンドウの**タイトルバーを Ctrl+右クリック**、または**右ボタン長押し(0.4秒)** → 色メニューが出る
@@ -79,14 +111,57 @@ wincolor.exe run <色> <コマンド...>
 
 ## 自動起動
 
-**トレイメニュー →「ログオン時に自動起動」**にチェックを入れると、スタートアップフォルダ
-(`shell:startup`)に `wincolor.lnk` を作成し、次回ログオンから自動起動する。
-チェックを外すとショートカットを削除して自動起動を解除する。
+仕組みはどの方法でも同じで、スタートアップフォルダ(`shell:startup`)に `wincolor.lnk` を置く。
+MSI インストール版が作るショートカットと同じ場所・同じ名前なので、どの方法で設定しても
+トレイメニューのチェック状態に反映され、そこから ON/OFF できる。
 
-- MSI インストール版が作るショートカットと同じ場所・同じ名前なので、MSI で入れた場合も
-  このトグルで ON/OFF できる(インストール直後はチェックが入った状態)
-- ソースから実行している場合は、AutoHotkey64.exe に `wincolor.ahk` を渡すショートカットになる
-- 手動で置きたいときは `Win+R` → `shell:startup` に自分でショートカットを置いてもよい
+### GUI で設定する
+
+1. wincolor を起動する(タスクトレイにアイコンが出る)
+2. **トレイアイコンを右クリック →「ログオン時に自動起動」**をクリックしてチェックを入れる
+   - exe 版なら exe を、ソース実行中なら AutoHotkey64.exe に `wincolor.ahk` を渡すショートカットが作られる
+   - 「次回ログオン時から自動起動します」と通知が出れば完了
+3. 解除するときは同じ項目をもう一度クリックしてチェックを外す(ショートカットが削除される)
+
+手で置きたいときは `Win+R` → `shell:startup` でスタートアップフォルダを開き、
+`wincolor.exe` を右ドラッグして「ショートカットをここに作成」でもよい。
+
+### コマンドで設定する
+
+exe を `%LocalAppData%\Programs\wincolor` に置いている場合(MSI / 上記の手動配置):
+
+```powershell
+$dst  = "$env:LOCALAPPDATA\Programs\wincolor"
+$link = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\wincolor.lnk"
+$s = (New-Object -ComObject WScript.Shell).CreateShortcut($link)
+$s.TargetPath       = "$dst\wincolor.exe"
+$s.WorkingDirectory = $dst
+$s.Description      = "wincolor - ウィンドウ着色"
+$s.Save()
+```
+
+ソースのまま自動起動したい場合は `TargetPath` を AutoHotkey64.exe、`Arguments` を
+`"<リポジトリ>\windows\wincolor.ahk"`、`WorkingDirectory` を `windows` フォルダにする。
+
+確認と解除:
+
+```powershell
+# 登録内容を確認
+$l = (New-Object -ComObject WScript.Shell).CreateShortcut("$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\wincolor.lnk")
+$l.TargetPath; $l.Arguments
+
+# 解除 (ショートカットを消すだけ)
+Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\wincolor.lnk"
+```
+
+### 起動していないときの確認
+
+```powershell
+Get-Process wincolor, AutoHotkey64 -ErrorAction SilentlyContinue | Select-Object Id, Path
+Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\wincolor.lnk"
+```
+
+プロセスが無く `Test-Path` が `False` なら、自動起動が未設定なので上のどちらかの手順で登録する。
 
 ## 制限
 
