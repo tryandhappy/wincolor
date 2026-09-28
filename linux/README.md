@@ -67,6 +67,17 @@ curl -fsSL https://raw.githubusercontent.com/tryandhappy/wincolor/main/linux/get
 
 必要なもの: `curl`(または `wget`)、`unzip`、GNOME Shell 50 / 51。
 
+### 2026-09-28 より前に入れた環境からの更新
+
+拡張の UUID を `window-color-tag@tryandhappy` に変更したため、古い版は上書きされず別の拡張として残る
+(両方が動くと Super+C / Super+X が競合し、枠も二重になる)。先に古い方を外してから入れ直す。
+
+```sh
+gnome-extensions list | grep '^window-color-tag@'   # window-color-tag@tryandhappy 以外が古い版
+gnome-extensions uninstall <古い版の UUID>
+# その後にインストールし、ログアウト → ログイン
+```
+
 ## インストール(リリース zip から)
 
 [Releases](../../../releases) の `wincolor-linux-vX.Y.Z.zip` を展開して `install.sh` を実行する
