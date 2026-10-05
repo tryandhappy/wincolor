@@ -27,7 +27,7 @@
 #   Super+X  色タグを順送り
 set -eu
 
-WINCOLOR_VERSION=0.2.3
+WINCOLOR_VERSION=0.3.0
 
 DEST=org.gnome.Shell
 PATH_=/tryandhappy/WindowColorTag
