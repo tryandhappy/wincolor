@@ -25,6 +25,12 @@ const SWATCHES_PER_ROW = 8;
 const APP_MENU_DOT_SIZE = 12;      // Dock 右クリックの窓一覧に付ける現在色ドット
 const APP_MENU_TITLE_MAX = 40;     // 同上の窓タイトルの最大文字数 (超えたら … で切る)
 
+// CSD 窓 (Chrome 等) のタイトルバー右クリックで開くアプリ自前のメニューに、色パレットを添える
+const CSD_TITLEBAR_BAND = 40;      // 窓の上端からこの高さまでをタイトルバー (タブ列) とみなす
+const POPUP_POINTER_SLOP = 4;      // メニュー窓の角がポインタからこの距離以内なら、右クリックで開いたとみなす
+const CSD_PALETTE_GAP = 6;         // メニュー窓とパレットの間隔
+const CSD_PALETTE_PADDING = 12;    // パレットの内側余白
+
 const SWITCHER_BORDER_WIDTH = 3;   // Alt+Tab 項目の枠
 const SWITCHER_RADIUS = 6;
 const SWITCHER_DOT_SIZE = 8;       // 1 アプリに複数色の窓があるときの色ドット
@@ -211,9 +217,11 @@ export default class WindowColorTagExtension extends Extension {
         this._pendingLaunches = [];  // TagPid の待ち行列
         this._startRules();
         this._startConfigMonitors();
+        this._startCsdMenuWatch();
     }
 
     disable() {
+        this._stopCsdMenuWatch();
         this._stopConfigMonitors();
         this._cancelLaunches('extension disabled');
         this._stopRules();
@@ -733,18 +741,25 @@ export default class WindowColorTagExtension extends Extension {
             reactive: false,
             can_focus: false,
         });
+        item.add_child(this._buildSwatchGrid(window, onDone));
+        return item;
+    }
+
+    // スウォッチの格子 (St.BoxLayout) を作る。perRow 個ずつ折り返す。
+    // canFocus: false にすると押してもキーフォーカスを Shell 側に取らない
+    // (Chrome のメニュー窓にキーボードを残したまま Escape を届けるため)
+    _buildSwatchGrid(window, onDone, {perRow = SWATCHES_PER_ROW, canFocus = true} = {}) {
         const rows = new St.BoxLayout({
             orientation: Clutter.Orientation.VERTICAL,
             style: 'spacing: 6px;',
         });
-        item.add_child(rows);
 
         const current = this._tags.get(window)?.hex;
 
-        // プリセット + 「消す」ボタンを SWATCHES_PER_ROW 個ずつ折り返して並べる
+        // プリセット + 「消す」ボタンを perRow 個ずつ折り返して並べる
         let box = null;
         const addSwatch = btn => {
-            if (!box || box.get_n_children() >= SWATCHES_PER_ROW) {
+            if (!box || box.get_n_children() >= perRow) {
                 box = new St.BoxLayout({style: 'spacing: 8px;'});
                 rows.add_child(box);
             }
@@ -756,7 +771,7 @@ export default class WindowColorTagExtension extends Extension {
             const btn = new St.Button({
                 width: SWATCH_SIZE,
                 height: SWATCH_SIZE,
-                can_focus: true,
+                can_focus: canFocus,
                 track_hover: true,
                 accessible_name: `${p.label} (${p.name})`,
                 style: `background-color: ${p.hex}; ` +
@@ -774,7 +789,7 @@ export default class WindowColorTagExtension extends Extension {
         const offBtn = new St.Button({
             width: SWATCH_SIZE,
             height: SWATCH_SIZE,
-            can_focus: true,
+            can_focus: canFocus,
             track_hover: true,
             accessible_name: '色を消す',
             style: `border-radius: ${SWATCH_SIZE / 2}px; border: 2px solid #888;`,
@@ -787,7 +802,7 @@ export default class WindowColorTagExtension extends Extension {
         });
         addSwatch(offBtn);
 
-        return item;
+        return rows;
     }
 
     // ---- dock / dash app menu ----
@@ -858,6 +873,177 @@ export default class WindowColorTagExtension extends Extension {
         const id = win.connect('unmanaged', () => sub.destroy());
         sub.connect('destroy', () => win.disconnect(id));
         return sub;
+    }
+
+    // ---- CSD titlebar menu (Chrome 等) ----
+
+    // Chrome などの CSD 窓は、タイトルバー (タブ列) の右クリックでアプリ自前のメニューを出す。
+    // そのメニューは他プロセスが描くので項目は足せない。そこで、タイトルバー帯で開いた
+    // メニュー窓 (xdg_popup) を検知し、すぐ下 (上向きに開いたときは上、入らなければ横) に
+    // 色パレットを添える。
+    //   - フォーカス済みの Wayland 窓へのクリックは拡張から見えない (Clutter のイベントフィルタにも
+    //     来ない。実測) ため、「ポインタが縁の上にある状態で開いたメニュー窓」を右クリックで開いたと
+    //     みなす。ボタンに揃えて開くメニューやホバーカードはポインタから離れているので除外される
+    //   - パレットは Shell の UI なので、Chrome のメニューを開いたまま押せる (実測)
+    //   - 色を選んだら Escape を送って Chrome のメニューを閉じる。メニュー窓に
+    //     MetaWindow.delete() を呼ぶと GNOME Shell 50.1 が落ちる (実測) ので使わない
+    _startCsdMenuWatch() {
+        this._csdPalette = null;   // {actor, popup, ids: [[obj, id], ...]}
+        this._csdWindowCreatedId = global.display.connect('window-created',
+            (_display, win) => {
+                try {
+                    this._onMenuWindowCreated(win);
+                } catch (e) {
+                    console.error(e, 'wincolor: failed to watch app menu window');
+                }
+            });
+    }
+
+    _stopCsdMenuWatch() {
+        if (this._csdWindowCreatedId) {
+            global.display.disconnect(this._csdWindowCreatedId);
+            this._csdWindowCreatedId = null;
+        }
+        this._closeCsdPalette();
+        this._virtualKeyboard = null;
+    }
+
+    _onMenuWindowCreated(popup) {
+        const type = popup.get_window_type();
+        if (type !== Meta.WindowType.DROPDOWN_MENU && type !== Meta.WindowType.POPUP_MENU)
+            return;
+        const parent = popup.get_transient_for();
+        if (!parent || parent.decorated || parent.is_skip_taskbar() ||
+            parent.get_window_type() !== Meta.WindowType.NORMAL)
+            return;
+
+        // 開いた瞬間のポインタがタイトルバー帯の中にあるか
+        const [px, py] = global.get_pointer();
+        const frame = parent.get_frame_rect();
+        if (px < frame.x || px >= frame.x + frame.width ||
+            py < frame.y || py >= frame.y + CSD_TITLEBAR_BAND)
+            return;
+
+        // xdg_popup は 0x0 で現れ、configure 後に位置と大きさが決まる
+        const ids = [];
+        const stop = () => {
+            for (const id of ids.splice(0))
+                popup.disconnect(id);
+        };
+        // 右クリックのメニューはポインタ位置を起点に開き、画面端では反転するか画面内へずらされる。
+        // どの場合もポインタはメニュー窓の縁の上に残るので、それで判定する
+        const check = () => {
+            const r = popup.get_frame_rect();
+            if (r.width <= 0 || r.height <= 0)
+                return;
+            stop();
+            const s = POPUP_POINTER_SLOP;
+            const near = (a, b) => Math.abs(a - b) <= s;
+            const inX = px >= r.x - s && px <= r.x + r.width + s;
+            const inY = py >= r.y - s && py <= r.y + r.height + s;
+            const onEdge = (inY && (near(r.x, px) || near(r.x + r.width, px))) ||
+                           (inX && (near(r.y, py) || near(r.y + r.height, py)));
+            if (onEdge) {
+                const openedUp = near(r.y + r.height, py) && !near(r.y, py);
+                this._openCsdPalette(popup, parent, r, openedUp);
+            }
+        };
+        ids.push(popup.connect('size-changed', check));
+        ids.push(popup.connect('position-changed', check));
+        ids.push(popup.connect('unmanaged', stop));
+        check();
+    }
+
+    // メニュー窓 popup (矩形 r) の脇に、parent 用の色パレットを出す。
+    // openedUp: メニューがポインタから上向きに開いた (パレットも上側に置き、クリック位置を隠さない)
+    _openCsdPalette(popup, parent, r, openedUp) {
+        this._closeCsdPalette();
+
+        // メニュー窓の幅に収まる個数で折り返し、各行の個数をそろえる (12+11、8+8+7 など)
+        const step = SWATCH_SIZE + 8;   // スウォッチ 1 個分の幅 (間隔込み)
+        const total = this._presets.length + 1;   // + 「消す」
+        const fit = Math.max(SWATCHES_PER_ROW,
+            Math.floor((r.width - 2 * CSD_PALETTE_PADDING + 8) / step));
+        const perRow = Math.ceil(total / Math.ceil(total / fit));
+        // 見た目は Shell のポップアップメニューに合わせる (文字色は popup-menu、背景と角丸は -content)
+        const actor = new St.BoxLayout({
+            orientation: Clutter.Orientation.VERTICAL,
+            style_class: 'popup-menu popup-menu-content',
+            style: `padding: ${CSD_PALETTE_PADDING}px; spacing: 8px;`,
+            reactive: true,
+        });
+        actor.add_child(new St.Label({
+            text: '色タグ',
+            style: 'font-size: 0.9em; font-weight: bold;',
+        }));
+        actor.add_child(this._buildSwatchGrid(parent, () => this._finishCsdPalette(),
+            {perRow, canFocus: false}));
+
+        Main.uiGroup.add_child(actor);
+        Main.uiGroup.set_child_above_sibling(actor, null);
+
+        // 置き場所: メニュー窓の下 (上向きに開いたときは上) → 反対側 → 右 → 左。
+        // 作業領域からはみ出さないよう寄せる
+        const [, natW] = actor.get_preferred_width(-1);
+        const width = Math.max(natW, r.width);
+        const [, natH] = actor.get_preferred_height(width);
+        actor.set_size(width, natH);
+        const monitor = popup.get_monitor() >= 0 ? popup.get_monitor() : parent.get_monitor();
+        const area = Main.layoutManager.getWorkAreaForMonitor(monitor);
+        const below = r.y + r.height + CSD_PALETTE_GAP;
+        const above = r.y - natH - CSD_PALETTE_GAP;
+        let x = r.x;
+        let y = (openedUp ? [above, below] : [below, above])
+            .find(cy => cy >= area.y && cy + natH <= area.y + area.height);
+        if (y === undefined) {
+            y = r.y;
+            x = r.x + r.width + CSD_PALETTE_GAP;
+            if (x + width > area.x + area.width)
+                x = r.x - width - CSD_PALETTE_GAP;
+        }
+        x = Math.max(area.x, Math.min(x, area.x + area.width - width));
+        y = Math.max(area.y, Math.min(y, area.y + area.height - natH));
+        actor.set_position(Math.round(x), Math.round(y));
+
+        // メニューが閉じた・窓が閉じたらパレットも消す
+        const close = () => this._closeCsdPalette();
+        this._csdPalette = {
+            actor, popup,
+            ids: [
+                [popup, popup.connect('unmanaged', close)],
+                [parent, parent.connect('unmanaged', close)],
+            ],
+        };
+    }
+
+    // パレットで色を選んだあと: パレットを消し、まだ開いている Chrome のメニューを Escape で閉じる
+    _finishCsdPalette() {
+        const popup = this._csdPalette?.popup;
+        this._closeCsdPalette();
+        if (!popup || !global.get_window_actors().some(a => a.meta_window === popup))
+            return;
+        if (!this._virtualKeyboard) {
+            const seat = Clutter.get_default_backend().get_default_seat();
+            this._virtualKeyboard = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+        }
+        const t = GLib.get_monotonic_time();
+        this._virtualKeyboard.notify_keyval(t, Clutter.KEY_Escape, Clutter.KeyState.PRESSED);
+        this._virtualKeyboard.notify_keyval(t + 1, Clutter.KEY_Escape, Clutter.KeyState.RELEASED);
+    }
+
+    _closeCsdPalette() {
+        const p = this._csdPalette;
+        if (!p)
+            return;
+        this._csdPalette = null;
+        for (const [obj, id] of p.ids)
+            obj.disconnect(id);
+        // スウォッチの clicked の最中に呼ばれることがあるので、隠すだけにして破棄は後に回す
+        p.actor.hide();
+        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            p.actor.destroy();
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     // Alt+Tab の一覧項目に色を反映する。項目ウィジェットの種類ごとに対応する窓を割り出し、
