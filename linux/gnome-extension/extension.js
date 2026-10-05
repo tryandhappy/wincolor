@@ -12,6 +12,7 @@ import * as SwitcherPopup from 'resource:///org/gnome/shell/ui/switcherPopup.js'
 import * as WindowPreview from 'resource:///org/gnome/shell/ui/windowPreview.js';
 import * as WorkspaceThumbnail from 'resource:///org/gnome/shell/ui/workspaceThumbnail.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import * as BoxPointer from 'resource:///org/gnome/shell/ui/boxpointer.js';
 
 const BORDER_WIDTH = 3;
 const CORNER_RADIUS = 14;
@@ -20,6 +21,9 @@ const TINT_OPACITY = 80;     // 0-255
 
 const SWATCH_SIZE = 24;
 const SWATCHES_PER_ROW = 8;
+
+const APP_MENU_DOT_SIZE = 12;      // Dock 右クリックの窓一覧に付ける現在色ドット
+const APP_MENU_TITLE_MAX = 40;     // 同上の窓タイトルの最大文字数 (超えたら … で切る)
 
 const SWITCHER_BORDER_WIDTH = 3;   // Alt+Tab 項目の枠
 const SWITCHER_RADIUS = 6;
@@ -123,6 +127,25 @@ export default class WindowColorTagExtension extends Extension {
             ext._appendColorRow(this, window);
         };
 
+        // Dock (ubuntu-dock / dash-to-dock) と GNOME 標準 Dash のアイコン右クリックメニューにも
+        // 色タグ欄を足す。ubuntu-dock のメニュークラスは export されていないので、
+        // PopupMenu.open を包み、開く直前に 'app-menu' クラスのメニューかどうかで判定する。
+        // Dock は開いたままのメニューに再度 popup() すると中身を作り直す (色タグ欄も消える) ので、
+        // 開いていても欄が無くなっていれば足し直す
+        this._appMenuSections = new Set();
+        this._origMenuOpen = PopupMenu.PopupMenu.prototype.open;
+        const origMenuOpen = this._origMenuOpen;
+        PopupMenu.PopupMenu.prototype.open = function (...args) {
+            if (!this.isOpen || !this._wincolorSection) {
+                try {
+                    ext._prepareAppMenu(this);
+                } catch (e) {
+                    console.error(e, 'wincolor: failed to add color section to app menu');
+                }
+            }
+            return origMenuOpen.apply(this, args);
+        };
+
         // Alt+Tab (アプリ切り替え / ウィンドウ切り替え / サムネイル一覧) の各項目にも色を反映する
         this._origAddItem = SwitcherPopup.SwitcherList.prototype.addItem;
         const origAddItem = this._origAddItem;
@@ -213,6 +236,14 @@ export default class WindowColorTagExtension extends Extension {
             WindowMenu.WindowMenu.prototype._buildMenu = this._origBuildMenu;
             this._origBuildMenu = null;
         }
+        if (this._origMenuOpen) {
+            PopupMenu.PopupMenu.prototype.open = this._origMenuOpen;
+            this._origMenuOpen = null;
+        }
+        // 標準 AppMenu は開くたびに作り直さないので、足した色タグ欄をここで外しておく
+        for (const section of [...(this._appMenuSections ?? [])])
+            section.destroy();
+        this._appMenuSections = null;
         if (this._origAddItem) {
             SwitcherPopup.SwitcherList.prototype.addItem = this._origAddItem;
             this._origAddItem = null;
@@ -692,7 +723,12 @@ export default class WindowColorTagExtension extends Extension {
 
     _appendColorRow(menu, window) {
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('色タグ'));
+        menu.addMenuItem(this._buildSwatchItem(window, () => menu.close()));
+    }
 
+    // 色スウォッチ (プリセット + 「消す」) を並べたメニュー項目を作る。
+    // 押すと window に色を付け (または消し)、onDone を呼ぶ (メニューを閉じる等)
+    _buildSwatchItem(window, onDone) {
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
@@ -730,7 +766,7 @@ export default class WindowColorTagExtension extends Extension {
             btn.connect('clicked', () => {
                 this._markManual(window);
                 this._addTag(window, {name: p.name, hex: p.hex});
-                menu.close();
+                onDone();
             });
             addSwatch(btn);
         }
@@ -747,11 +783,81 @@ export default class WindowColorTagExtension extends Extension {
         offBtn.connect('clicked', () => {
             this._markManual(window);
             this._removeTag(window);
-            menu.close();
+            onDone();
         });
         addSwatch(offBtn);
 
-        menu.addMenuItem(item);
+        return item;
+    }
+
+    // ---- dock / dash app menu ----
+
+    // アプリアイコンの右クリックメニュー (ubuntu-dock の DockAppIconMenu、GNOME 標準の AppMenu)
+    // を開く直前に呼ばれる。「終了」の上に色タグ欄を足す。
+    //   窓が 1 つ   … スウォッチ行をそのまま並べる
+    //   窓が複数    … 窓タイトルごとの折りたたみ項目 (現在色ドット付き)。開くとスウォッチ行
+    _prepareAppMenu(menu) {
+        // 前回足した欄を外す (Dock は開くたびに作り直すが、標準 AppMenu は作り直さない)
+        menu._wincolorSection?.destroy();
+        if (!this._tags || !menu.actor?.has_style_class_name?.('app-menu'))
+            return;
+        const app = menu.sourceActor?.app ?? menu._app;
+        if (!app?.get_windows)
+            return;
+        // Dock はモニタ/ワークスペースの絞り込み設定を反映した窓一覧を持つので、あればそれに合わせる
+        const all = menu.sourceActor?.getInterestingWindows?.() ?? app.get_windows();
+        const windows = all.filter(w => w && !w.is_skip_taskbar());
+        if (windows.length === 0)
+            return;
+
+        const done = () => menu.close(BoxPointer.PopupAnimation.FULL);
+        const section = new PopupMenu.PopupMenuSection();
+        section.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('色タグ'));
+        if (windows.length === 1) {
+            section.addMenuItem(this._buildSwatchItem(windows[0], done));
+        } else {
+            for (const win of windows)
+                section.addMenuItem(this._buildWindowColorSubmenu(win, app, done));
+        }
+
+        // 「終了」とその直前の区切り線の上に入れる。見つからなければ末尾
+        const items = menu._getMenuItems();
+        let pos = items.indexOf(menu._quitMenuItem ?? menu._quitItem);
+        if (pos > 0 && items[pos - 1] instanceof PopupMenu.PopupSeparatorMenuItem)
+            pos--;
+        menu.addMenuItem(section, pos >= 0 ? pos : undefined);
+
+        menu._wincolorSection = section;
+        this._appMenuSections.add(section);
+        section.connect('destroy', () => {
+            this._appMenuSections?.delete(section);
+            if (menu._wincolorSection === section)
+                menu._wincolorSection = null;
+        });
+    }
+
+    // 窓 1 つ分の折りたたみ項目: 「● 窓タイトル ▸」、開くとその窓用のスウォッチ行
+    _buildWindowColorSubmenu(win, app, onDone) {
+        let title = win.get_title() || app.get_name() || '?';
+        const chars = [...title];
+        if (chars.length > APP_MENU_TITLE_MAX)
+            title = `${chars.slice(0, APP_MENU_TITLE_MAX - 1).join('')}…`;
+
+        const sub = new PopupMenu.PopupSubMenuMenuItem(title, false);
+        const hex = this._tags.get(win)?.hex;
+        sub.insert_child_at_index(new St.Widget({
+            width: APP_MENU_DOT_SIZE,
+            height: APP_MENU_DOT_SIZE,
+            y_align: Clutter.ActorAlign.CENTER,
+            style: `border-radius: ${APP_MENU_DOT_SIZE / 2}px; ` +
+                   (hex ? `background-color: ${hex};` : 'border: 1px solid #888;'),
+        }), 0);
+        sub.menu.addMenuItem(this._buildSwatchItem(win, onDone));
+
+        // メニューを開いている間に窓が閉じたら項目も消す
+        const id = win.connect('unmanaged', () => sub.destroy());
+        sub.connect('destroy', () => win.disconnect(id));
+        return sub;
     }
 
     // Alt+Tab の一覧項目に色を反映する。項目ウィジェットの種類ごとに対応する窓を割り出し、

@@ -13,6 +13,8 @@
      末尾に色を並べる(他プロセスのシステムメニューに項目を差し込んでも選択結果を受け取れない
      ため、複製方式にした。標準項目は `WM_SYSCOMMAND` を対象窓に送って実行)
    - macOS: **Ctrl+右クリック**(通常の右クリックは横取りしない)
+   - Linux: mutter のウィンドウメニュー(**Super+右クリック**、`Super+C`、Alt+Space、
+     SSD 窓のタイトルバー右クリック)に色を並べる。**Dock アイコンの右クリック**でも窓ごとに選べる
    - トレイ/メニューバーのメニューからウィンドウ一覧で選ぶ方式も併設する
 3. 色メニューの内容
    - 色プリセット(shared/colors.json 参照)
@@ -102,7 +104,25 @@
 - 拡張は D-Bus (`tryandhappy.WindowColorTag`) で `Set` / `Clear` / `ClearAll` / `List` を公開し、
   CLI ラッパー `wincolor`(bash + `gdbus`)から操作する
 - CSD(クライアント側装飾)アプリはタイトルバー右クリックが効かないため、
-  mutter キーバインド(既定 `Super+C` でメニュー表示、`Super+X` で色を順送り)で代替
+  mutter キーバインド(既定 `Super+C` でメニュー表示、`Super+X` で色を順送り)で代替。
+  mutter 標準の **Super+右クリック**(`mouse-button-modifier` + 右ボタン。`resize-with-right-button`
+  が false の既定時)でも窓のどこからでも同じウィンドウメニューが開く
+  - Chrome のタブ列右クリックの横取りは不採用: Wayland ではタイトルバー領域を判定する手段が無く、
+    Chrome 自身のタブメニューと衝突する
+- Dock(ubuntu-dock / dash-to-dock)と GNOME 標準 Dash のアイコン右クリックメニューにも、
+  「終了」の上に色タグ欄を足す。窓が 1 つならスウォッチ行を直接、複数なら窓タイトルごとの
+  折りたたみ項目(現在色ドット付き、タイトルは 40 文字で省略)を並べる。窓一覧は Dock の
+  `getInterestingWindows()`(モニタ/ワークスペースの絞り込み設定を反映)があればそれを使う
+  - ubuntu-dock の `DockAppIconMenu` は export されていないため、`PopupMenu.PopupMenu.prototype.open`
+    を包み、`app-menu` クラスかつ `sourceActor.app`(標準 AppMenu は `_app`)を持つメニューだけを対象にする
+  - Dock は開いたままのメニューに再度 `popup()` すると中身を作り直す(色タグ欄も消える)ため、
+    開いていても欄が無くなっていれば足し直す。標準 AppMenu は作り直さないので、開くたびに前回分を外して作る
+  - `disable()` で、標準 AppMenu に残っている欄も破棄する
+  - 実測: GNOME Shell 50.1 をヘッドレス(`--headless --virtual-monitor`、隔離した HOME と D-Bus)で起動し、
+    gedit 3 窓 + 電卓 1 窓で、欄の位置・重複なし・色の反映・「消す」・表示中に閉じた窓の項目削除・
+    無効化と再有効化を確認。GNOME 51 では未確認(依存: `PopupMenu.open`、`_getMenuItems`、
+    標準 AppMenu の `_app` / `_quitItem`、Dock の `_quitMenuItem` / `getInterestingWindows`。
+    「終了」が見つからなければ末尾に足し、例外は握りつぶしてメニュー自体は開く)
 - Alt+Tab の切り替え一覧にも反映する。`switcherPopup.SwitcherList.addItem` を包み、
   項目ウィジェットに色枠を付ける(1 アプリに複数色の窓がある場合は色ドットを並べる)。
   アプリ切り替え(`AppIcon.cachedWindows`)・ウィンドウ切り替え(`WindowIcon.window`)・

@@ -22,6 +22,11 @@ GNOME Shell 拡張として動かし、mutter 内部の `window_group` に
 を重ねて表示し、`position-changed` / `size-changed` に追従させている。
 CSD(クライアント側装飾)アプリはタイトルバー右クリックが効かないため、
 `Super+C` で mutter ネイティブのキーバインドからウィンドウメニューを開けるようにしてある。
+mutter 標準の Super+右クリック(窓のどこでも)でも同じメニューが開く。
+
+Dock(ubuntu-dock / dash-to-dock)と GNOME 標準 Dash のアイコン右クリックメニューにも
+「色タグ」欄を足している。ubuntu-dock のメニュークラスは export されていないため、
+`PopupMenu.open` を包んで、アプリアイコンのメニュー(`app-menu` クラス)が開く直前に欄を差し込む。
 
 Alt+Tab の切り替え一覧にも色を反映する。GNOME の switcher は
 `switcherPopup.SwitcherList.addItem` を通って項目を作るので、そこを包んで
@@ -140,6 +145,13 @@ wincolor reload               # colors.json / rules.json を再読み込み
 
 タイトルバーが自前描画でないウィンドウは、タイトルバー右クリック(または Alt+Space)の
 ウィンドウメニューにも色スウォッチの行が追加される。
+
+マウス操作:
+
+- `Super+右クリック` — 窓のどこでもウィンドウメニューを開く(mutter 標準。Chrome 等の CSD 窓でも効く)
+- Dock のアイコンを右クリック — 「終了」の上に「色タグ」欄が出る
+  - 窓が 1 つ: 色をそのまま選ぶ
+  - 窓が複数: 窓タイトル(左の丸が現在の色)を開いて色を選ぶ
 
 ## 自動ルール
 
