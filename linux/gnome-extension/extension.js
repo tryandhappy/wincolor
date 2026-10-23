@@ -113,6 +113,9 @@ const DBUS_IFACE = `
 </node>`;
 
 export default class WindowColorTagExtension extends Extension {
+    // 画面の消灯 (ロック無効でも) とロックで Shell は 'unlock-dialog' モードに入り、対応を宣言して
+    // いない拡張を disable() する。色の記録はメモリ上にしか無く復帰時に消えてしまうので、
+    // metadata.json の session-modes に unlock-dialog を入れて有効のまま保つ
     enable() {
         this._tags = new Map(); // MetaWindow -> {name, hex, border, tint, winIds, actorIds}
         this._presets = this._loadPresets();
@@ -218,9 +221,19 @@ export default class WindowColorTagExtension extends Extension {
         this._startRules();
         this._startConfigMonitors();
         this._startCsdMenuWatch();
+
+        // ロック中は Shell の UI を出さない。CSD 窓のパレットはロック画面より上に重なるので閉じる
+        this._sessionModeId = Main.sessionMode.connect('updated', () => {
+            if (Main.sessionMode.isLocked)
+                this._closeCsdPalette();
+        });
     }
 
     disable() {
+        if (this._sessionModeId) {
+            Main.sessionMode.disconnect(this._sessionModeId);
+            this._sessionModeId = null;
+        }
         this._stopCsdMenuWatch();
         this._stopConfigMonitors();
         this._cancelLaunches('extension disabled');
@@ -909,6 +922,8 @@ export default class WindowColorTagExtension extends Extension {
     }
 
     _onMenuWindowCreated(popup) {
+        if (Main.sessionMode.isLocked)
+            return;
         const type = popup.get_window_type();
         if (type !== Meta.WindowType.DROPDOWN_MENU && type !== Meta.WindowType.POPUP_MENU)
             return;

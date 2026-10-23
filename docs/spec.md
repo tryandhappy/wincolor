@@ -176,6 +176,15 @@
   Flatpak / Snap / ラッパースクリプト対応)の窓を探す。PID を引き継がないアプリ(gnome-terminal の
   クライアント/サーバ型、既存インスタンスに委譲するブラウザ等)向けに、不一致の新規窓が出たら
   1.5 秒だけ一致を待ってからその窓に付ける。既定 10 秒(`WINCOLOR_RUN_TIMEOUT`)で諦める
+- 画面の消灯・ロックで色が消えないよう、`metadata.json` の `session-modes` に `unlock-dialog` を入れている
+  - GNOME Shell は無操作で画面が暗転すると、ロックが無効(`lock-enabled` false)でも
+    `ScreenShield.activate()` で `unlock-dialog` モードに入り、`session-modes` に無い拡張を `disable()` する
+    (50.1 のソースで確認)。色の記録はメモリ上だけなので、復帰後の `enable()` では空になっていた
+  - ロック中は CSD 窓の色パレットを出さず、開いていれば閉じる(`Main.uiGroup` の最上位に置くので
+    ロック画面より上に出てしまう)。キーバインドは `ActionMode.NORMAL` なのでロック中は効かない
+  - 実測: ヘッドレス GNOME Shell 50.1 + gedit で `org.gnome.ScreenSaver.SetActive true/false` の前後を比較。
+    修正前は消灯中に拡張が無効(state 2)になり、復帰後は色が消え枠色(#C42B1C)のピクセルが 0。
+    修正後は有効のままで、復帰後も枠が残る
 - KDE 等 GNOME 以外のコンポジタ、および X11 専用の代替実装は未着手
 - 詳細は `linux/README.md` を参照
 

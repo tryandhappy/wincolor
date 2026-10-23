@@ -7,6 +7,10 @@
     "51"
   ],
   "version-name": "0.3.0",
+  "session-modes": [
+    "user",
+    "unlock-dialog"
+  ],
   "settings-schema": "org.gnome.shell.extensions.window-color-tag",
   "url": ""
 }

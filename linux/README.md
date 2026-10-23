@@ -46,6 +46,9 @@ Alt+Tab の切り替え一覧にも色を反映する。GNOME の switcher は
 実ウィンドウの座標系のまま縮小表示されるので、枠の太さは縮小率で割って画面上で一定 (約 3px) に見えるよう
 補正している。
 
+画面の消灯・ロック中も拡張は有効のまま動く(`metadata.json` の `session-modes` に `unlock-dialog`)。
+GNOME はロックが無効でも消灯時に拡張を一旦無効化するため、これが無いと復帰時に色がすべて消える。
+
 ## 要件
 
 - GNOME Shell 50 または 51(`metadata.json` の `shell-version` は `50` と `51`)。
