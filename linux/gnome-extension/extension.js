@@ -35,7 +35,7 @@ const SWITCHER_BORDER_WIDTH = 3;   // Alt+Tab 項目の枠
 const SWITCHER_RADIUS = 6;
 const SWITCHER_DOT_SIZE = 8;       // 1 アプリに複数色の窓があるときの色ドット
 
-const PREVIEW_BORDER_WIDTH = 4;    // オーバービューのウィンドウプレビューの枠
+const PREVIEW_BORDER_WIDTH = 5;    // オーバービューのウィンドウプレビューの枠
 const PREVIEW_RADIUS = 6;
 
 // ワークスペースサムネイル内の枠。中身は実ウィンドウの座標系のまま _viewport ごと
