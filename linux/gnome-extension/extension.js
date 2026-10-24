@@ -14,7 +14,7 @@ import * as WorkspaceThumbnail from 'resource:///org/gnome/shell/ui/workspaceThu
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as BoxPointer from 'resource:///org/gnome/shell/ui/boxpointer.js';
 
-const BORDER_WIDTH = 3;
+const BORDER_WIDTH = 5;
 const CORNER_RADIUS = 14;
 const TINT_HEIGHT = 40;      // approximate CSD titlebar height
 const TINT_OPACITY = 80;     // 0-255

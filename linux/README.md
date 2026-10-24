@@ -16,7 +16,7 @@ GNOME Shell 拡張機能 + CLI ラッパー。
 Wayland ネイティブウィンドウは外部プロセスから直接ウィンドウを装飾できないため、
 GNOME Shell 拡張として動かし、mutter 内部の `window_group` に
 
-- 枠(`St.Widget` + CSS border、幅3px・角丸14px)
+- 枠(`St.Widget` + CSS border、幅5px・角丸14px)
 - タイトルバー相当の色タイント(上端40px、半透明)
 
 を重ねて表示し、`position-changed` / `size-changed` に追従させている。
